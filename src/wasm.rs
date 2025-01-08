@@ -13,7 +13,7 @@ use crate::{
 };
 use std::collections::HashMap;
 use mchprs_blocks::BlockPos;
-
+use crate::mchprs_world::generate_truth_table;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -38,14 +38,13 @@ impl SchematicWrapper {
 
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        console::log_1(&"SchematicWrapper created bip asdfasdf".into());
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
 
-
     pub fn create_simulation_world(&self) -> MchprsWorldWrapper {
-        MchprsWorldWrapper::new(self)
+        MchprsWorldWrapper::new(self).unwrap()
     }
+
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
         console::log_1(&"Parsing schematic data".into());
@@ -300,14 +299,12 @@ impl SchematicWrapper {
 #[wasm_bindgen]
 impl MchprsWorldWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(schematic: &SchematicWrapper) -> Self {
-        console::log_1(&"Creating MchprsWorldWrapper".into());
+    pub fn new(schematic: &SchematicWrapper) -> Result<MchprsWorldWrapper, JsValue> {
 
-        let world = MchprsWorld::new(schematic.0.clone());
+        let world = MchprsWorld::new(schematic.0.clone())
+            .map_err(|e| JsValue::from_str(&format!("Failed to create MchprsWorld: {}", e)))?;
 
-        console::log_1(&"MchprsWorld created successfully".into());
-
-        MchprsWorldWrapper { world }
+        Ok(MchprsWorldWrapper { world })
     }
 
     pub fn on_use_block(&mut self, x: i32, y: i32, z: i32) {
@@ -332,6 +329,31 @@ impl MchprsWorldWrapper {
 
     pub fn get_redstone_power(&self, x: i32, y: i32, z: i32) -> u8 {
         self.world.get_redstone_power(BlockPos::new(x, y, z))
+    }
+
+    pub fn get_truth_table(&self) -> JsValue {
+        // Get the truth table result from the Rust implementation
+        let truth_table = generate_truth_table(&self.world.schematic);
+
+        // Create a JavaScript array to hold the results
+        let result = js_sys::Array::new();
+        // Convert each row in the truth table to a JavaScript object
+        for row in truth_table {
+            let row_obj = js_sys::Object::new();
+
+            // Add each entry in the row to the object
+            for (key, value) in row {
+                js_sys::Reflect::set(
+                    &row_obj,
+                    &JsValue::from_str(&key),
+                    &JsValue::from_bool(value)
+                ).unwrap();
+            }
+
+            result.push(&row_obj);
+        }
+
+        result.into()
     }
 }
 

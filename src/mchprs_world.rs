@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use mchprs_blocks::{block_entities::BlockEntity, blocks::Block, BlockPos};
 use mchprs_world::{storage::Chunk, TickEntry, TickPriority, World};
-use mchprs_redpiler::{Compiler, CompilerOptions};
+use mchprs_redpiler::{BackendVariant, Compiler, CompilerOptions, };
 use nbt::{Map, Value};
 use crate::block_entity::BlockEntity as UtilBlockEntity;
 use crate::UniversalSchematic;
 use thiserror::Error;
+use web_sys::console;
 
 #[derive(Error, Debug)]
 pub enum MchprsWorldError {
@@ -15,54 +16,95 @@ pub enum MchprsWorldError {
 }
 
 pub struct MchprsWorld {
-    schematic: UniversalSchematic,
+    pub(crate) schematic: UniversalSchematic,
     chunks: HashMap<(i32, i32), Chunk>,
     to_be_ticked: Vec<TickEntry>,
     compiler: Compiler,
 }
 
 impl MchprsWorld {
-    pub fn new(schematic: UniversalSchematic) -> Self {
+    pub fn new(schematic: UniversalSchematic) -> Result<Self, String> {
         let mut world = MchprsWorld {
             schematic,
             chunks: HashMap::new(),
             to_be_ticked: Vec::new(),
-            compiler: Compiler::default(),
+            compiler: {
+                let mut c = Compiler::default();
+                let options = CompilerOptions {
+                    optimize: false,  // Disable optimization for WASM
+                    io_only: true,
+                    wire_dot_out: true,
+                    backend_variant: BackendVariant::Direct,
+                    ..Default::default()
+                };
+                // Initialize backend immediately since we're in WASM
+                #[cfg(target_arch = "wasm32")]
+                {
+                    use mchprs_redpiler::backend::BackendDispatcher;
+                    c.use_jit(BackendDispatcher::DirectBackend(Default::default()));
+                }
+                c
+            },
         };
 
-        world.initialize_chunks().map_err(|e| {
-            MchprsWorldError::InitializationFailed(format!("initialize_chunks failed: {}", e))
-        }).expect("TODO: panic message");
-
+        world.initialize_chunks()?;
         world.populate_chunks();
         world.update_redstone();
-        world.initialize_compiler();
-        world
+        world.initialize_compiler()?;
+
+        Ok(world)
     }
 
-    fn initialize_compiler(&mut self) {
+    fn initialize_compiler(&mut self) -> Result<(), String> {
         let bounding_box = self.schematic.get_bounding_box();
         let bounds = (
             BlockPos::new(0, 0, 0),
             BlockPos::new(bounding_box.max.0, bounding_box.max.1, bounding_box.max.2)
         );
+
+        #[cfg(target_arch = "wasm32")]
+        let options = CompilerOptions {
+            optimize: false,  // Disable optimization in WASM
+            io_only: true,
+            wire_dot_out: true,
+            backend_variant: BackendVariant::Direct,
+            ..Default::default()
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
         let options = CompilerOptions {
             optimize: true,
             io_only: true,
             wire_dot_out: true,
             ..Default::default()
         };
+
+
         let ticks = self.to_be_ticked.drain(..).collect();
         let monitor = Default::default();
 
-        // Create a temporary Compiler
         let mut temp_compiler = std::mem::take(&mut self.compiler);
 
-        // Use the temporary Compiler
-        temp_compiler.compile(self, bounds, options, ticks, monitor);
-
-        // Put the Compiler back
-        self.compiler = temp_compiler;
+        // Try compilation with error handling
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            temp_compiler.compile(self, bounds, options, ticks, monitor)
+        })) {
+            Ok(_) => {
+                self.compiler = temp_compiler;
+                Ok(())
+            }
+            Err(e) => {
+                let error_msg = if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = e.downcast_ref::<&str>() {
+                    s.to_string()
+                } else {
+                    "Unknown compilation error".to_string()
+                };
+                console::error_1(&format!("Compilation failed: {}", error_msg).into());
+                Err(error_msg)
+            }
+        }
     }
 
 
@@ -236,7 +278,7 @@ impl MchprsWorld {
 }
 
 pub fn generate_truth_table(schematic: &UniversalSchematic) -> Vec<HashMap<String, bool>> {
-    let mut world = MchprsWorld::new(schematic.clone());
+    let mut world = MchprsWorld::new(schematic.clone()).unwrap();
 
     // Find all levers and lamps
     let (inputs, outputs) = find_inputs_and_outputs(&world);
@@ -268,7 +310,7 @@ pub fn generate_truth_table(schematic: &UniversalSchematic) -> Vec<HashMap<Strin
 
         truth_table.push(result);
 
-        world = MchprsWorld::new(schematic.clone());
+        world = MchprsWorld::new(schematic.clone()).unwrap();
     }
     truth_table
 }
@@ -427,7 +469,7 @@ mod tests {
     #[test]
     fn test_simple_redstone_line() {
         let schematic = get_sample_schematic();
-        let mut world = MchprsWorld::new(schematic);
+        let mut world = MchprsWorld::new(schematic).unwrap();
 
         for x in 1..15 {
             let power = world.get_redstone_power(BlockPos::new(x, 1, 0));
@@ -462,7 +504,7 @@ mod tests {
     #[test]
     fn test_simple_and_gate() {
         let schematic = get_sample_and_gate_schematic();
-        let mut world = MchprsWorld::new(schematic);
+        let mut world = MchprsWorld::new(schematic).unwrap();
 
         let lever_a_pos = BlockPos::new(0, 0, 0);
         let lever_b_pos = BlockPos::new(2, 0, 0);
@@ -588,7 +630,7 @@ mod tests {
     #[test]
     fn test_comparator_xor_gate() {
         let schematic = get_comparator_xor_gate();
-        let mut world = MchprsWorld::new(schematic);
+        let mut world = MchprsWorld::new(schematic).unwrap();
 
         let lever_a_pos = BlockPos::new(0, 1, 4);
         let lever_b_pos = BlockPos::new(3, 1, 4);
@@ -611,27 +653,27 @@ mod tests {
             }
         }
     }
-#[test]
-fn test_auto_truth_table_xor_gate() {
-    let schematic = get_comparator_xor_gate();
-    let truth_table = generate_truth_table(&schematic);
+    #[test]
+    fn test_auto_truth_table_xor_gate() {
+        let schematic = get_comparator_xor_gate();
+        let truth_table = generate_truth_table(&schematic);
 
-    println!("XOR Gate Truth Table:");
-    for row in &truth_table {
-        println!("{:?}", row);
+        println!("XOR Gate Truth Table:");
+        for row in &truth_table {
+            println!("{:?}", row);
+        }
+
+        assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
+
+        // Verify XOR behavior
+        for row in truth_table {
+            let input_a = row.get("Input 0").unwrap();
+            let input_b = row.get("Input 1").unwrap();
+            let output = row.get("Output 0").unwrap();
+
+            assert_eq!(*output, *input_a ^ *input_b);
+        }
     }
-
-    assert_eq!(truth_table.len(), 4);  // 2^2 combinations for 2 inputs
-
-    // Verify XOR behavior
-    for row in truth_table {
-        let input_a = row.get("Input 0").unwrap();
-        let input_b = row.get("Input 1").unwrap();
-        let output = row.get("Output 0").unwrap();
-
-        assert_eq!(*output, *input_a ^ *input_b);
-    }
-}
 
     #[test]
     fn test_auto_truth_table_and_gate() {

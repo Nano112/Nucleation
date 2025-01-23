@@ -114,37 +114,38 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 
     let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
 
+    let schem = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
 
-    let name = if let Some(metadata) = root.get::<_, &NbtCompound>("Metadata").ok() {
+    let name = if let Some(metadata) = schem.get::<_, &NbtCompound>("Metadata").ok() {
         metadata.get::<_, &str>("Name").ok().map(|s| s.to_string())
     } else {
         None
     }.unwrap_or_else(|| "Unnamed".to_string());
 
-    let mc_version = root.get::<_, i32>("DataVersion").ok();
+    let mc_version = schem.get::<_, i32>("DataVersion").ok();
 
     let mut schematic = UniversalSchematic::new(name);
     schematic.metadata.mc_version = mc_version;
 
-    let width = root.get::<_, i16>("Width")? as u32;
-    let height = root.get::<_, i16>("Height")? as u32;
-    let length = root.get::<_, i16>("Length")? as u32;
+    let width = schem.get::<_, i16>("Width")? as u32;
+    let height = schem.get::<_, i16>("Height")? as u32;
+    let length = schem.get::<_, i16>("Length")? as u32;
 
-    let palette = parse_palette(&root)?;
+    let palette = parse_palette(&schem)?;
 
-    let block_data = parse_block_data(&root, width, height, length)?;
+    let block_data = parse_block_data(&schem, width, height, length)?;
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
     region.palette = palette;
 
     region.blocks = block_data.iter().map(|&x| x as usize).collect();
 
-    let block_entities = parse_block_entities(&root)?;
+    let block_entities = parse_block_entities(&schem)?;
     for block_entity in block_entities {
         region.add_block_entity(block_entity);
     }
 
-    let entities = parse_entities(&root)?;
+    let entities = parse_entities(&schem)?;
     for entity in entities {
         region.add_entity(entity);
     }

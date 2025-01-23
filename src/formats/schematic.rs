@@ -5,7 +5,6 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use quartz_nbt::io::Flavor;
-
 use crate::{BlockState, UniversalSchematic};
 use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
@@ -17,7 +16,7 @@ pub fn is_schematic(data: &[u8]) -> bool {
     let mut decompressed = Vec::new();
     if decoder.read_to_end(&mut decompressed).is_err() {
 
-        #[cfg(feature = "web")]
+        #[cfg(feature = "wasm")]
         Err(JsValue::from_str("Failed to decompress data")).expect("Failed to decompress data");
         return false;
     }
@@ -26,7 +25,7 @@ pub fn is_schematic(data: &[u8]) -> bool {
     let (root, _) = match quartz_nbt::io::read_nbt(&mut Cursor::new(decompressed), Flavor::Uncompressed) {
         Ok(result) => result,
         Err(_) => {
-            #[cfg(feature = "web")]
+            #[cfg(feature = "wasm")]
             Err(JsValue::from_str("Failed to read NBT data")).expect("Failed to read NBT data");
             return false;
         }

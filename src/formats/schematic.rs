@@ -10,6 +10,9 @@ use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
 use crate::region::Region;
 
+#[cfg(feature = "wasm")]
+use wasm_bindgen::JsValue;
+
 pub fn is_schematic(data: &[u8]) -> bool {
     // Decompress the data
     let mut decoder = GzDecoder::new(data);

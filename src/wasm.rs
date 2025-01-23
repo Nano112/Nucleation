@@ -56,6 +56,7 @@ impl SchematicWrapper {
             Err(JsValue::from_str("Unknown or unsupported schematic format"))
         }
     }
+
     pub fn from_litematic(&mut self, data: &[u8]) -> Result<(), JsValue> {
         self.0 = litematic::from_litematic(data)
             .map_err(|e| JsValue::from_str(&format!("Litematic parsing error: {}", e)))?;

@@ -173,15 +173,15 @@ checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 
 [[package]]
 name = "console"
-version = "0.15.8"
+version = "0.15.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e1f83fc076bd6dd27517eacdf25fef6c4dfe5f1d7448bafaaf3a26f13b5e4eb"
+checksum = "ea3c6ecd8059b57859df5c69830340ed3c41d30e3da0c1cbed90a96ac853041b"
 dependencies = [
  "encode_unicode",
- "lazy_static",
  "libc",
+ "once_cell",
  "unicode-width",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -284,9 +284,9 @@ checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
 name = "encode_unicode"
-version = "0.3.6"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "enum_dispatch"
@@ -334,9 +334,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.5"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
 
 [[package]]
 name = "hematite-nbt"
@@ -380,12 +380,21 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.5.0"
+version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
+checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "instant"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -425,10 +434,11 @@ checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
 
 [[package]]
 name = "js-sys"
-version = "0.3.70"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1868808506b929d7b0cfa8f75951347aa71bb21144b7791bae35d9bccfcfe37a"
+checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
+ "once_cell",
  "wasm-bindgen",
 ]
 
@@ -471,7 +481,7 @@ dependencies = [
 [[package]]
 name = "mchprs_blocks"
 version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
  "hematite-nbt",
  "mchprs_proc_macros",
@@ -482,7 +492,7 @@ dependencies = [
 [[package]]
 name = "mchprs_proc_macros"
 version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -491,9 +501,11 @@ dependencies = [
 [[package]]
 name = "mchprs_redpiler"
 version = "0.1.0"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
+ "console",
  "enum_dispatch",
+ "instant",
  "itertools 0.13.0",
  "mchprs_blocks",
  "mchprs_redstone",
@@ -504,12 +516,13 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tracing",
+ "web-sys",
 ]
 
 [[package]]
 name = "mchprs_redstone"
 version = "0.1.0"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
  "mchprs_blocks",
  "mchprs_world",
@@ -520,12 +533,12 @@ dependencies = [
 [[package]]
 name = "mchprs_utils"
 version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 
 [[package]]
 name = "mchprs_world"
 version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
  "hematite-nbt",
  "itertools 0.13.0",
@@ -743,7 +756,7 @@ dependencies = [
 [[package]]
 name = "redpiler_graph"
 version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#d1e1b9f39f6028d7c912ac799dde39dbd20ac25a"
+source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
 dependencies = [
  "bincode",
  "serde",
@@ -795,9 +808,15 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
 name = "rustc-hash"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
+checksum = "c7fb8039b3032c191086b10f11f319a6e99e1e82889c5cc6046f515c9db1d497"
+
+[[package]]
+name = "rustversion"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
 name = "ryu"
@@ -1015,9 +1034,9 @@ checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
 name = "unicode-width"
-version = "0.1.13"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
+checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "valuable"
@@ -1037,12 +1056,13 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.93"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a82edfc16a6c469f5f44dc7b571814045d60404b55a0ee849f9bcfa2e63dd9b5"
+checksum = "1edc8929d7499fc4e8f0be2262a241556cfc54a0bea223790e71446f2aab1ef5"
 dependencies = [
  "cfg-if",
  "once_cell",
+ "rustversion",
  "serde",
  "serde_json",
  "wasm-bindgen-macro",
@@ -1050,13 +1070,12 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.93"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9de396da306523044d3302746f1208fa71d7532227f15e347e2d93e4145dd77b"
+checksum = "2f0a0651a5c2bc21487bde11ee802ccaf4c51935d0d3d42a6101f98161700bc6"
 dependencies = [
  "bumpalo",
  "log",
- "once_cell",
  "proc-macro2",
  "quote",
  "syn 2.0.77",
@@ -1077,9 +1096,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.93"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "585c4c91a46b072c92e908d99cb1dcdf95c5218eeb6f3bf1efa991ee7a68cccf"
+checksum = "7fe63fc6d09ed3792bd0897b314f53de8e16568c2b3f7982f468c0bf9bd0b407"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -1087,9 +1106,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.93"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afc340c74d9005395cf9dd098506f7f44e38f2b4a21c6aaacf9a105ea5e1e836"
+checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1100,9 +1119,12 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.93"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c62a0a307cb4a311d3a07867860911ca130c3494e8c2719593806c08bc5d0484"
+checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
+dependencies = [
+ "unicode-ident",
+]
 
 [[package]]
 name = "wasm-bindgen-test"
@@ -1132,9 +1154,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.70"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26fdeaafd9bd129f65e7c031593c24d62186301e0c72c8978fa1678be7d532c0"
+checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

@@ -6,7 +6,6 @@ use nbt::{Map, Value};
 use crate::block_entity::BlockEntity as UtilBlockEntity;
 use crate::UniversalSchematic;
 use thiserror::Error;
-use web_sys::console;
 
 #[derive(Error, Debug)]
 pub enum MchprsWorldError {
@@ -31,7 +30,7 @@ impl MchprsWorld {
             compiler: {
                 let mut c = Compiler::default();
                 let options = CompilerOptions {
-                    optimize: false,  // Disable optimization for WASM
+                    optimize: true,  // Disable optimization for WASM
                     io_only: true,
                     wire_dot_out: true,
                     backend_variant: BackendVariant::Direct,
@@ -51,7 +50,6 @@ impl MchprsWorld {
         world.populate_chunks();
         world.update_redstone();
         world.initialize_compiler()?;
-
         Ok(world)
     }
 
@@ -64,7 +62,7 @@ impl MchprsWorld {
 
         #[cfg(target_arch = "wasm32")]
         let options = CompilerOptions {
-            optimize: false,  // Disable optimization in WASM
+            optimize: true,  // Disable optimization in WASM
             io_only: true,
             wire_dot_out: true,
             backend_variant: BackendVariant::Direct,
@@ -101,7 +99,6 @@ impl MchprsWorld {
                 } else {
                     "Unknown compilation error".to_string()
                 };
-                console::error_1(&format!("Compilation failed: {}", error_msg).into());
                 Err(error_msg)
             }
         }

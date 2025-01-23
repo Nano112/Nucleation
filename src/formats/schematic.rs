@@ -1,27 +1,35 @@
-use crate::{UniversalSchematic, BlockState};
-use quartz_nbt::{NbtCompound, NbtTag, NbtList};
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
-use flate2::Compression;
 use std::io::{Cursor, Read};
+
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use quartz_nbt::io::Flavor;
+
+use crate::{BlockState, UniversalSchematic};
 use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
 use crate::region::Region;
-
 
 pub fn is_schematic(data: &[u8]) -> bool {
     // Decompress the data
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
     if decoder.read_to_end(&mut decompressed).is_err() {
+
+        #[cfg(feature = "web")]
+        Err(JsValue::from_str("Failed to decompress data")).expect("Failed to decompress data");
         return false;
     }
 
     // Read the NBT data
     let (root, _) = match quartz_nbt::io::read_nbt(&mut Cursor::new(decompressed), Flavor::Uncompressed) {
         Ok(result) => result,
-        Err(_) => return false,
+        Err(_) => {
+            #[cfg(feature = "web")]
+            Err(JsValue::from_str("Failed to read NBT data")).expect("Failed to read NBT data");
+            return false;
+        }
     };
 
     // Check for required fields as per the Sponge Schematic Specification
@@ -327,9 +335,11 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::path::Path;
-    use super::*;
-    use crate::{UniversalSchematic, BlockState};
+
+    use crate::{BlockState, UniversalSchematic};
     use crate::litematic::{from_litematic, to_litematic};
+
+    use super::*;
 
     #[test]
     fn test_schematic_file_generation() {

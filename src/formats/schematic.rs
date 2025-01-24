@@ -115,6 +115,7 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
 
     let schem = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
+    let schem_version = schem.get::<_, i32>("Version")?;
 
     let name = if let Some(metadata) = schem.get::<_, &NbtCompound>("Metadata").ok() {
         metadata.get::<_, &str>("Name").ok().map(|s| s.to_string())
@@ -131,12 +132,19 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let height = schem.get::<_, i16>("Height")? as u32;
     let length = schem.get::<_, i16>("Length")? as u32;
 
-    let palette = parse_palette(&schem)?;
+    let block_container=
+    if schem_version == 2 {
+        schem
+    } else {
+        schem.get::<_, &NbtCompound>("Blocks")?
+    };
 
-    let block_data = parse_block_data(&schem, width, height, length)?;
+    let block_palette = parse_block_palette(&block_container)?;
+
+    let block_data = parse_block_data(&block_container, width, height, length)?;
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
-    region.palette = palette;
+    region.palette = block_palette;
 
     region.blocks = block_data.iter().map(|&x| x as usize).collect();
 
@@ -176,7 +184,7 @@ fn convert_entities(region: &Region) -> NbtList {
     entities
 }
 
-fn parse_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
+fn parse_block_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
     let palette_compound = region_tag.get::<_, &NbtCompound>("Palette")?;
     let palette_max = region_tag.get::<_, i32>("PaletteMax")? as usize;
     let mut palette = vec![BlockState::new("minecraft:air".to_string()); palette_max + 1];

@@ -3,10 +3,34 @@ use std::path::Path;
 use minecraft_schematic_utils::{BlockState, litematic, schematic, UniversalSchematic};
 
 #[test]
-fn test_litematic_to_schem_conversion() {
+fn test_single_litematic_to_schem_conversion() {
+    litematic_to_schem_conversion("door_plot");
+}
 
+#[test]
+fn test_single_schema_to_litematic_conversion() {
+    schema_to_litematic_conversion("new_chest_test");
+}
 
-    let name = "gol";
+#[test]
+fn test_all_litematic_to_schem_conversion() {
+    for name in list_test_file("litematic") {
+        print!("Testing {} ...", name);
+        litematic_to_schem_conversion(name.as_str());
+        println!(" OK!");
+    }
+}
+
+#[test]
+fn test_all_schema_to_litematic_conversion() {
+    for name in list_test_file("schem") {
+        print!("Testing {} ...", name);
+        schema_to_litematic_conversion(name.as_str());
+        println!(" OK!");
+    }
+}
+
+fn litematic_to_schem_conversion(name: &str) {
 
     // Path to the sample .litematic file
     let input_path_str = format!("tests/samples/{}.litematic", name);
@@ -82,9 +106,7 @@ fn test_litematic_to_schem_conversion() {
 }
 
 
-#[test]
-fn test_schema_to_litematic_conversion() {
-    let name = "new_chest_test";
+fn schema_to_litematic_conversion(name: &str) {
 
     // Path to the sample .schem file
     let input_path_str = format!("tests/samples/{}.schem", name);
@@ -112,41 +134,32 @@ fn test_schema_to_litematic_conversion() {
 
 
 
-#[test]
-fn test_create_schematic_with_repeater() {
-    let name = "repeater_test";
 
-    // Create a new UniversalSchematic
-    let mut schematic = UniversalSchematic::new( "repeater_test".to_string());
+struct TestFiles<'a> {
+    extension: &'a str,
+    reader: fs::ReadDir,
+}
 
-    // Add a block to the schematic
-    // schematic.set_block_from_string(0, 0, 0, "minecraft:stone").expect("TODO: panic message");
-    // schematic.set_block_from_string(0, 1, 0, "minecraft:repeater[facing=north,delay=1,powered=false,locked=false]").expect("TODO: panic message");
-    for x in 0..16 {
-        schematic.set_block_from_string(x, 0, 0, "minecraft:stone").expect("TODO: panic message");
-        let delay = x % 4 + 1;
-        let powered = if x > 3 && x < 8 || x > 11 { "true" } else { "false" };
-        let locked = x >= 8;
-        schematic.set_block_from_string(x, 1, 0, &format!("minecraft:repeater[facing=east,delay={},powered={},locked={}]", delay, powered, locked)).expect("TODO: panic message");
-        schematic.set_block_from_string(x, 1, 1, &format!("minecraft:barrel[facing=up, open=false]{{signal={}}}",x)).expect("TODO: panic message");
+impl<'a> Iterator for TestFiles<'a> {
+    type Item = String;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entry) = self.reader.next() {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some(self.extension) {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        return Some(stem.to_string());
+                    }
+                }
+            }
+        }
+        None
     }
+}
 
+fn list_test_file(extension: &str) -> TestFiles {
+    const DIR_PATH: &str = "./tests/samples";
+    TestFiles { extension, reader: fs::read_dir(DIR_PATH).unwrap() }
 
-
-    // Convert the UniversalSchematic to .schem format
-    let schem_data = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
-
-    // save the .schem file
-    let output_schem_path = format!("tests/output/{}.schem", name);
-    let schem_path = Path::new(&output_schem_path);
-    fs::write(schem_path, &schem_data).expect("Failed to write schem file");
-
-
-    let lite_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
-
-    // save the .litematic file
-    let output_litematic_path = format!("tests/output/{}.litematic", name);
-    let litematic_path = Path::new(&output_litematic_path);
-    fs::write(litematic_path, &lite_data).expect("Failed to write litematic file");
 }

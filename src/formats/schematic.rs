@@ -114,36 +114,47 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
 
     let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
 
+    let schem = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
+    let schem_version = schem.get::<_, i32>("Version")?;
 
-    let name = if let Some(metadata) = root.get::<_, &NbtCompound>("Metadata").ok() {
+    let name = if let Some(metadata) = schem.get::<_, &NbtCompound>("Metadata").ok() {
         metadata.get::<_, &str>("Name").ok().map(|s| s.to_string())
     } else {
         None
     }.unwrap_or_else(|| "Unnamed".to_string());
 
-    let mc_version = root.get::<_, i32>("DataVersion").ok();
+    let mc_version = schem.get::<_, i32>("DataVersion").ok();
 
     let mut schematic = UniversalSchematic::new(name);
     schematic.metadata.mc_version = mc_version;
 
-    let width = root.get::<_, i16>("Width")? as u32;
-    let height = root.get::<_, i16>("Height")? as u32;
-    let length = root.get::<_, i16>("Length")? as u32;
+    let width = schem.get::<_, i16>("Width")? as u32;
+    let height = schem.get::<_, i16>("Height")? as u32;
+    let length = schem.get::<_, i16>("Length")? as u32;
 
-    let palette = parse_palette(&root)?;
-    let block_data = parse_block_data(&root, width, height, length)?;
+    let block_container=
+    if schem_version == 2 {
+        schem
+    } else {
+        schem.get::<_, &NbtCompound>("Blocks")?
+    };
+
+    let block_palette = parse_block_palette(&block_container)?;
+
+    let block_data = parse_block_data(&block_container, width, height, length)?;
+
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
-    region.palette = palette;
+    region.palette = block_palette;
 
     region.blocks = block_data.iter().map(|&x| x as usize).collect();
 
-    let block_entities = parse_block_entities(&root)?;
+    let block_entities = parse_block_entities(&block_container)?;
     for block_entity in block_entities {
         region.add_block_entity(block_entity);
     }
 
-    let entities = parse_entities(&root)?;
+    let entities = parse_entities(&schem)?;
     for entity in entities {
         region.add_entity(entity);
     }
@@ -174,9 +185,10 @@ fn convert_entities(region: &Region) -> NbtList {
     entities
 }
 
-fn parse_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
+fn parse_block_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<dyn std::error::Error>> {
     let palette_compound = region_tag.get::<_, &NbtCompound>("Palette")?;
-    let palette_max = region_tag.get::<_, i32>("PaletteMax")? as usize;
+    let palette_max = region_tag.get::<_, i32>("PaletteMax") // V2
+        .unwrap_or(palette_compound.len() as i32) as usize; // V3
     let mut palette = vec![BlockState::new("minecraft:air".to_string()); palette_max + 1];
 
     for (block_state_str, value) in palette_compound.inner() {
@@ -268,7 +280,8 @@ fn decode_varint<R: Read>(reader: &mut R) -> Result<u32, Box<dyn std::error::Err
 }
 
 fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let block_data_i8 = region_tag.get::<_, &Vec<i8>>("BlockData")?;
+    let block_data_i8 = region_tag.get::<_, &Vec<i8>>("BlockData") // V2
+        .or(region_tag.get::<_, &Vec<i8>>("Data"))?; // V3
     let block_data_u8: Vec<u8> = block_data_i8.iter().map(|&x| x as u8).collect();
     let mut block_data = Vec::new();
 

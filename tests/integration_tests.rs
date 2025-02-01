@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use minecraft_schematic_utils::{BlockState, litematic, schematic};
+use minecraft_schematic_utils::{BlockState, litematic, schematic, UniversalSchematic};
 
 #[test]
 fn test_single_litematic_to_schem_conversion() {
@@ -134,6 +134,7 @@ fn schema_to_litematic_conversion(name: &str) {
 
 
 
+
 struct TestFiles<'a> {
     extension: &'a str,
     reader: fs::ReadDir,
@@ -160,4 +161,5 @@ impl<'a> Iterator for TestFiles<'a> {
 fn list_test_file(extension: &str) -> TestFiles {
     const DIR_PATH: &str = "./tests/samples";
     TestFiles { extension, reader: fs::read_dir(DIR_PATH).unwrap() }
+
 }

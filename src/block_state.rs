@@ -45,6 +45,10 @@ impl BlockState {
         }
     }
 
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
     pub fn with_property(mut self, key: String, value: String) -> Self {
         self.properties.insert(key, value);
         self

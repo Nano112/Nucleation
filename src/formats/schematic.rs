@@ -18,9 +18,8 @@ pub fn is_schematic(data: &[u8]) -> bool {
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
     if decoder.read_to_end(&mut decompressed).is_err() {
-
         #[cfg(feature = "wasm")]
-        Err(JsValue::from_str("Failed to decompress data")).expect("Failed to decompress data");
+        let _: Result<(), JsValue> = Err(JsValue::from_str("Failed to decompress data"));
         return false;
     }
 
@@ -29,7 +28,7 @@ pub fn is_schematic(data: &[u8]) -> bool {
         Ok(result) => result,
         Err(_) => {
             #[cfg(feature = "wasm")]
-            Err(JsValue::from_str("Failed to read NBT data")).expect("Failed to read NBT data");
+            let _: Result<(), JsValue> = Err(JsValue::from_str("Failed to read NBT data"));
             return false;
         }
     };
@@ -66,7 +65,7 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     let merged_region = schematic.get_merged_region();
     
     root.insert("Palette", convert_palette(&merged_region.palette).0);
-    root.insert("PaletteMax", convert_palette(&merged_region.palette).1);
+    root.insert("PaletteMax", convert_palette(&merged_region.palette).1 + 1);
 
     let block_data: Vec<u8> = merged_region.blocks.iter()
         .flat_map(|&block_id| encode_varint(block_id as u32))
@@ -99,8 +98,9 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
     root.insert("Metadata", schematic.metadata.to_nbt());
 
+
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    quartz_nbt::io::write_nbt(&mut encoder, None, &root, quartz_nbt::io::Flavor::Uncompressed)?;
+    quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
 }
 
@@ -142,6 +142,7 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let block_palette = parse_block_palette(&block_container)?;
 
     let block_data = parse_block_data(&block_container, width, height, length)?;
+
 
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
     region.palette = block_palette;

@@ -1,3 +1,4 @@
+use crate::utils::{NbtMap, parse_custom_name, parse_items_array};
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ use crate::chunk::Chunk;
 use crate::entity::Entity;
 use crate::metadata::Metadata;
 use crate::region::Region;
+use crate::utils::NbtValue;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UniversalSchematic {
@@ -353,18 +355,102 @@ impl UniversalSchematic {
         block_counts
     }
 
+
+        pub fn copy_region(
+            &mut self,
+            from_schematic: &UniversalSchematic,
+            bounds: &BoundingBox,
+            target_position: (i32, i32, i32),
+            excluded_blocks: &[BlockState],
+        ) -> Result<(), String> {
+            let offset = (
+                target_position.0 - bounds.min.0,
+                target_position.1 - bounds.min.1,
+                target_position.2 - bounds.min.2
+            );
+
+            // Copy blocks
+            for x in bounds.min.0..=bounds.max.0 {
+                for y in bounds.min.1..=bounds.max.1 {
+                    for z in bounds.min.2..=bounds.max.2 {
+                        if let Some(block) = from_schematic.get_block(x, y, z) {
+                            if excluded_blocks.contains(block) {
+                                continue;
+                            }
+                            let new_x = x + offset.0;
+                            let new_y = y + offset.1;
+                            let new_z = z + offset.2;
+                            self.set_block(new_x, new_y, new_z, block.clone());
+                        }
+                    }
+                }
+            }
+
+            // Copy block entities
+            for x in bounds.min.0..=bounds.max.0 {
+                for y in bounds.min.1..=bounds.max.1 {
+                    for z in bounds.min.2..=bounds.max.2 {
+                        let pos = BlockPosition { x, y, z };
+                        if let Some(block_entity) = from_schematic.get_block_entity(pos) {
+                            let mut new_block_entity = block_entity.clone();
+                            new_block_entity.position = (
+                                block_entity.position.0 + offset.0,
+                                block_entity.position.1 + offset.1,
+                                block_entity.position.2 + offset.2
+                            );
+                            self.set_block_entity(BlockPosition {
+                                x: x + offset.0,
+                                y: y + offset.1,
+                                z: z + offset.2
+                            }, new_block_entity);
+                        }
+                    }
+                }
+            }
+
+            // Copy entities that are within the bounds
+            for region in from_schematic.regions.values() {
+                for entity in &region.entities {
+                    let entity_pos = (
+                        entity.position.0.floor() as i32,
+                        entity.position.1.floor() as i32,
+                        entity.position.2.floor() as i32
+                    );
+
+                    if bounds.contains(entity_pos) {
+                        let mut new_entity = entity.clone();
+                        new_entity.position = (
+                            entity.position.0 + offset.0 as f64,
+                            entity.position.1 + offset.1 as f64,
+                            entity.position.2 + offset.2 as f64
+                        );
+                        self.add_entity(new_entity);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
     pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Chunk> {
         use std::collections::HashMap;
         let mut chunk_map: HashMap<(i32, i32, i32), Vec<BlockPosition>> = HashMap::new();
-        let (width, height, length) = self.get_dimensions();
+        let bbox = self.get_bounding_box();
 
-        for x in 0..width {
-            for y in 0..height {
-                for z in 0..length {
+        // Helper function to get chunk coordinate
+        let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
+            let offset = if pos < 0 { chunk_size - 1  } else { 0 };
+            (pos - offset) / chunk_size
+        };
+
+        // Iterate through the actual bounding box instead of dimensions
+        for x in bbox.min.0..=bbox.max.0 {
+            for y in bbox.min.1..=bbox.max.1 {
+                for z in bbox.min.2..=bbox.max.2 {
                     if self.get_block(x, y, z).is_some() {
-                        let chunk_x = x / chunk_width;
-                        let chunk_y = y / chunk_height;
-                        let chunk_z = z / chunk_length;
+                        let chunk_x = get_chunk_coord(x, chunk_width);
+                        let chunk_y = get_chunk_coord(y, chunk_height);
+                        let chunk_z = get_chunk_coord(z, chunk_length);
                         let chunk_key = (chunk_x, chunk_y, chunk_z);
 
                         chunk_map
@@ -421,6 +507,207 @@ impl UniversalSchematic {
                     positions: blocks.iter().map(|(pos, _)| *pos).collect(),
                 }
             })
+    }
+
+    pub fn set_block_from_string(&mut self, x: i32, y: i32, z: i32, block_string: &str) -> Result<bool, String> {
+        let (block_state, nbt_data) = Self::parse_block_string(block_string)?;
+
+        // Set the basic block first
+        if !self.set_block(x, y, z, block_state.clone()) {
+            return Ok(false);
+        }
+
+        // If we have NBT data, create and set the block entity
+        if let Some(nbt_data) = nbt_data {
+            let mut block_entity = BlockEntity::new(
+                block_state.name.clone(),
+                (x, y, z)
+            );
+
+            // Add NBT data
+            for (key, value) in nbt_data {
+                block_entity = block_entity.with_nbt_data(key, value);
+            }
+
+            self.set_block_entity(BlockPosition { x, y, z }, block_entity);
+        }
+
+        Ok(true)
+    }
+
+    /// Parses a block string into its components (block state and optional NBT data)
+    fn calculate_items_for_signal(signal_strength: u8) -> u32 {
+        if signal_strength == 0 {
+            return 0;
+        }
+
+        const BARREL_SLOTS: u32 = 27;
+        const MAX_STACK: u32 = 64;
+        const MAX_SIGNAL: u32 = 14;
+
+        let calculated = ((BARREL_SLOTS * MAX_STACK) as f64 / MAX_SIGNAL as f64)
+            * (signal_strength as f64 - 1.0);
+        let items_needed = calculated.ceil() as u32;
+
+        std::cmp::max(signal_strength as u32, items_needed)
+    }
+
+    /// Creates Items NBT data for a barrel to achieve desired signal strength
+    fn create_barrel_items_nbt(signal_strength: u8) -> Vec<NbtValue> {
+        let total_items = Self::calculate_items_for_signal(signal_strength);
+        let mut items = Vec::new();
+        let mut remaining_items = total_items;
+        let mut slot: u8 = 0;
+
+        while remaining_items > 0 {
+            let stack_size = std::cmp::min(remaining_items, 64) as u8;
+            let mut item_nbt = NbtMap::new();  // Using NbtMap instead of HashMap
+            item_nbt.insert("Count".to_string(), NbtValue::Byte(stack_size as i8));
+            item_nbt.insert("Slot".to_string(), NbtValue::Byte(slot as i8));
+            item_nbt.insert("id".to_string(), NbtValue::String("minecraft:redstone_block".to_string()));
+
+            items.push(NbtValue::Compound(item_nbt));
+
+            remaining_items -= stack_size as u32;
+            slot += 1;
+        }
+
+        items
+    }
+    /// Parse a block string into its components, handling special signal strength case
+    pub fn parse_block_string(block_string: &str) -> Result<(BlockState, Option<HashMap<String, NbtValue>>), String> {
+        let mut parts = block_string.splitn(2, '{');
+        let block_state_str = parts.next().unwrap().trim();
+        let nbt_str = parts.next().map(|s| s.trim_end_matches('}'));
+
+        // Parse block state
+        let block_state = if block_state_str.contains('[') {
+            let mut state_parts = block_state_str.splitn(2, '[');
+            let block_name = state_parts.next().unwrap();
+            let properties_str = state_parts.next()
+                .ok_or("Missing properties closing bracket")?
+                .trim_end_matches(']');
+
+            let mut properties = HashMap::new();
+            for prop in properties_str.split(',') {
+                let mut kv = prop.split('=');
+                let key = kv.next().ok_or("Missing property key")?.trim();
+                let value = kv.next().ok_or("Missing property value")?.trim()
+                    .trim_matches(|c| c == '\'' || c == '"');
+                properties.insert(key.to_string(), value.to_string());
+            }
+
+            BlockState::new(block_name.to_string()).with_properties(properties)
+        } else {
+            BlockState::new(block_state_str.to_string())
+        };
+
+        // Parse NBT data if present
+        let nbt_data = if let Some(nbt_str) = nbt_str {
+            let mut nbt_map = HashMap::new();
+
+            // Check for signal strength specification
+            if block_state.get_name() == "minecraft:barrel" && nbt_str.contains("signal=") {
+                if let Some(signal_str) = nbt_str.split('=').nth(1) {
+                    let signal_strength: u8 = signal_str.trim().parse()
+                        .map_err(|_| "Invalid signal strength value")?;
+
+                    if signal_strength > 15 {
+                        return Err("Signal strength must be between 0 and 15".to_string());
+                    }
+
+                    let items = Self::create_barrel_items_nbt(signal_strength);
+                    nbt_map.insert("Items".to_string(), NbtValue::List(items));
+                }
+            } else {
+                // Handle regular NBT parsing
+                if nbt_str.contains("Items:[") {
+                    let items = parse_items_array(nbt_str)?;
+                    nbt_map.insert("Items".to_string(), NbtValue::List(items));
+                }
+
+                if nbt_str.contains("CustomName:") {
+                    let name = parse_custom_name(nbt_str)?;
+                    nbt_map.insert("CustomName".to_string(), NbtValue::String(name));
+                }
+            }
+
+            Some(nbt_map)
+        } else {
+            None
+        };
+
+        Ok((block_state, nbt_data))
+    }
+
+    pub fn create_schematic_from_region(&self, bounds: &BoundingBox) -> Self {
+        let mut new_schematic = UniversalSchematic::new(format!("Region_{}", self.default_region_name));
+
+        // Normalize coordinates to start at 0,0,0 in the new schematic
+        let offset = (
+            -bounds.min.0,
+            -bounds.min.1,
+            -bounds.min.2
+        );
+
+        // Copy blocks
+        for x in bounds.min.0..=bounds.max.0 {
+            for y in bounds.min.1..=bounds.max.1 {
+                for z in bounds.min.2..=bounds.max.2 {
+                    if let Some(block) = self.get_block(x, y, z) {
+                        let new_x = x + offset.0;
+                        let new_y = y + offset.1;
+                        let new_z = z + offset.2;
+                        new_schematic.set_block(new_x, new_y, new_z, block.clone());
+                    }
+                }
+            }
+        }
+
+        // Copy block entities
+        for x in bounds.min.0..=bounds.max.0 {
+            for y in bounds.min.1..=bounds.max.1 {
+                for z in bounds.min.2..=bounds.max.2 {
+                    let pos = BlockPosition { x, y, z };
+                    if let Some(block_entity) = self.get_block_entity(pos) {
+                        let mut new_block_entity = block_entity.clone();
+                        new_block_entity.position = (
+                            block_entity.position.0 + offset.0,
+                            block_entity.position.1 + offset.1,
+                            block_entity.position.2 + offset.2
+                        );
+                        new_schematic.set_block_entity(BlockPosition {
+                            x: x + offset.0,
+                            y: y + offset.1,
+                            z: z + offset.2
+                        }, new_block_entity);
+                    }
+                }
+            }
+        }
+
+        // Copy entities that are within the bounds
+        for region in self.regions.values() {
+            for entity in &region.entities {
+                let entity_pos = (
+                    entity.position.0.floor() as i32,
+                    entity.position.1.floor() as i32,
+                    entity.position.2.floor() as i32
+                );
+
+                if bounds.contains(entity_pos) {
+                    let mut new_entity = entity.clone();
+                    new_entity.position = (
+                        entity.position.0 + offset.0 as f64,
+                        entity.position.1 + offset.1 as f64,
+                        entity.position.2 + offset.2 as f64
+                    );
+                    new_schematic.add_entity(new_entity);
+                }
+            }
+        }
+
+        new_schematic
     }
 
 
@@ -482,6 +769,8 @@ mod tests {
         assert_eq!(schematic.get_block_from_region("Region2", 20, 0, 0), None);
     }
 
+
+
     #[test]
     fn test_schematic_large_coordinates() {
         let mut schematic = UniversalSchematic::new("Large Schematic".to_string());
@@ -516,6 +805,100 @@ mod tests {
         assert_eq!(schematic.get_block(0, 0, 0), Some(&block1));
         assert_eq!(schematic.get_block(10, 20, 30), Some(&block2));
         assert_eq!(schematic.get_block(5, 10, 15), Some(&BlockState::new("minecraft:air".to_string())));
+    }
+
+    #[test]
+    fn test_copy_bounded_region() {
+        // Create source schematic
+        let mut source = UniversalSchematic::new("Source".to_string());
+
+        // Add some blocks in a pattern
+        source.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
+        source.set_block(1, 1, 1, BlockState::new("minecraft:dirt".to_string()));
+        source.set_block(2, 2, 2, BlockState::new("minecraft:diamond_block".to_string()));
+
+        // Add a block entity
+        let chest = BlockEntity::create_chest((1, 1, 1), vec![
+            ItemStack::new("minecraft:diamond", 64).with_slot(0)
+        ]);
+        source.set_block_entity(BlockPosition { x: 1, y: 1, z: 1 }, chest);
+
+        // Add an entity
+        let entity = Entity::new("minecraft:creeper".to_string(), (1.5, 1.0, 1.5));
+        source.add_entity(entity);
+
+        // Create target schematic
+        let mut target = UniversalSchematic::new("Target".to_string());
+
+        // Define a bounding box that includes part of the pattern
+        let bounds = BoundingBox::new((0, 0, 0), (1, 1, 1));
+
+        // Copy to new position
+        assert!(target.copy_region(&source, &bounds, (10, 10, 10), &[]).is_ok());
+
+        // Verify copied blocks
+        assert_eq!(target.get_block(10, 10, 10).unwrap().get_name(), "minecraft:stone");
+        assert_eq!(target.get_block(11, 11, 11).unwrap().get_name(), "minecraft:dirt");
+
+        // Block at (2, 2, 2) should not have been copied as it's outside bounds
+        assert!(target.get_block(12, 12, 12).is_none());
+
+        // Verify block entity was copied and moved
+        assert!(target.get_block_entity(BlockPosition { x: 11, y: 11, z: 11 }).is_some());
+
+        // Verify entity was copied and moved
+        let main_region = target.get_region("Main").unwrap();
+        assert_eq!(main_region.entities.len(), 1);
+        assert_eq!(
+            main_region.entities[0].position,
+            (11.5, 11.0, 11.5)
+        );
+    }
+
+    #[test]
+    fn test_copy_region_excluded_blocks() {
+        // Create source schematic
+        let mut source = UniversalSchematic::new("Source".to_string());
+
+        // Add blocks in a pattern including blocks we'll want to exclude
+        let stone = BlockState::new("minecraft:stone".to_string());
+        let dirt = BlockState::new("minecraft:dirt".to_string());
+        let diamond = BlockState::new("minecraft:diamond_block".to_string());
+        let air = BlockState::new("minecraft:air".to_string());
+
+        // Create a 2x2x2 cube with different blocks
+        source.set_block(0, 0, 0, stone.clone());
+        source.set_block(0, 1, 0, dirt.clone());  // Changed position to avoid overlap
+        source.set_block(1, 0, 0, diamond.clone());
+        source.set_block(1, 1, 0, dirt.clone());
+
+        // Create target schematic
+        let mut target = UniversalSchematic::new("Target".to_string());
+
+        // Define bounds that include all blocks
+        let bounds = BoundingBox::new((0, 0, 0), (1, 1, 0));
+
+        // List of blocks to exclude (stone and diamond)
+        let excluded_blocks = vec![stone.clone(), diamond.clone()];
+
+        // Copy region with exclusions to position (10, 10, 10)
+        assert!(target.copy_region(&source, &bounds, (10, 10, 10), &excluded_blocks).is_ok());
+
+        // Test some specific positions
+        // Where dirt blocks were in source (should be copied)
+        assert_eq!(target.get_block(10, 11, 10), Some(&dirt), "Dirt block should be copied at (10, 11, 10)");
+        assert_eq!(target.get_block(11, 11, 10), Some(&dirt), "Dirt block should be copied at (11, 11, 10)");
+
+        // check that excluded blocks were not copied
+        assert_eq!(target.get_block(10, 10, 10), None, "Stone block should not be copied at (10, 10, 10)");
+        assert_eq!(target.get_block(11, 10, 10), None, "Diamond block should not be copied at (11, 10, 10)");
+
+        // Count the total number of dirt blocks
+        let dirt_blocks: Vec<_> = target.get_blocks().into_iter()
+            .filter(|b| b == &dirt)
+            .collect();
+
+        assert_eq!(dirt_blocks.len(), 2, "Should have exactly 2 dirt blocks");
     }
 
     #[test]
@@ -616,6 +999,43 @@ mod tests {
     }
 
     #[test]
+    fn test_set_block_from_string() {
+        let mut schematic = UniversalSchematic::new("Test".to_string());
+
+        // Test simple block
+        assert!(schematic.set_block_from_string(0, 0, 0, "minecraft:stone").unwrap());
+
+        // Test block with properties
+        assert!(schematic.set_block_from_string(1, 0, 0, "minecraft:chest[facing=north]").unwrap());
+
+        // Test container with items
+        let barrel_str = r#"minecraft:barrel[facing=up]{CustomName:'{"text":"Storage"}',Items:[{Count:64b,Slot:0b,id:"minecraft:redstone"}]}"#;
+        assert!(schematic.set_block_from_string(2, 0, 0, barrel_str).unwrap());
+
+        // Verify the blocks were set correctly
+        assert_eq!(schematic.get_block(0, 0, 0).unwrap().get_name(), "minecraft:stone");
+        assert_eq!(schematic.get_block(1, 0, 0).unwrap().get_name(), "minecraft:chest");
+        assert_eq!(schematic.get_block(2, 0, 0).unwrap().get_name(), "minecraft:barrel");
+
+        // Verify container contents
+        let barrel_entity = schematic.get_block_entity(BlockPosition { x: 2, y: 0, z: 0 }).unwrap();
+        let items = barrel_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = items {
+            assert_eq!(items.len(), 1);
+            if let NbtValue::Compound(item) = &items[0] {
+                assert_eq!(item.get("id").unwrap(), &NbtValue::String("minecraft:redstone".to_string()));
+                assert_eq!(item.get("Count").unwrap(), &NbtValue::Byte(64));
+                assert_eq!(item.get("Slot").unwrap(), &NbtValue::Byte(0));
+            } else {
+                panic!("Expected compound NBT value");
+            }
+        } else {
+            panic!("Expected list of items");
+        }
+    }
+
+
+    #[test]
     fn test_region_palette_operations() {
         let mut region = Region::new("Test".to_string(), (0, 0, 0), (2, 2, 2));
 
@@ -701,7 +1121,72 @@ mod tests {
         assert_eq!(merged_region.get_block(1, 1, 1), Some(&BlockState::new("minecraft:dirt".to_string())));
     }
 
+    #[test]
+    fn test_calculate_items_for_signal() {
+        assert_eq!(UniversalSchematic::calculate_items_for_signal(0), 0);
+        assert_eq!(UniversalSchematic::calculate_items_for_signal(1), 1);
+        assert_eq!(UniversalSchematic::calculate_items_for_signal(15), 1728); // Full barrel
+    }
 
+    #[test]
+    fn test_barrel_signal_strength() {
+        let mut schematic = UniversalSchematic::new("Test".to_string());
+
+        // Test simple signal strength
+        let barrel_str = "minecraft:barrel{signal=13}";
+        assert!(schematic.set_block_from_string(0, 0, 0, barrel_str).unwrap());
+
+        let barrel_entity = schematic.get_block_entity(BlockPosition { x: 0, y: 0, z: 0 }).unwrap();
+        let items = barrel_entity.nbt.get("Items").unwrap();
+
+        if let NbtValue::List(items) = items {
+            // Calculate expected total items
+            let mut total_items = 0;
+            for item in items {
+                if let NbtValue::Compound(item_map) = item {
+                    if let Some(NbtValue::Byte(count)) = item_map.get("Count") {
+                        total_items += *count as u32;
+                    }
+                }
+            }
+
+            // Verify the total items matches what's needed for signal strength 13
+            let expected_items = UniversalSchematic::calculate_items_for_signal(13);
+            assert_eq!(total_items as u32, expected_items);
+        }
+
+        // Test invalid signal strength
+        let invalid_barrel = "minecraft:barrel{signal=16}";
+        assert!(schematic.set_block_from_string(1, 0, 0, invalid_barrel).is_err());
+    }
+
+    #[test]
+    fn test_barrel_with_properties_and_signal() {
+        let mut schematic = UniversalSchematic::new("Test".to_string());
+
+        let barrel_str = "minecraft:barrel[facing=up]{signal=7}";
+        assert!(schematic.set_block_from_string(0, 0, 0, barrel_str).unwrap());
+
+        // Verify the block state properties
+        let block = schematic.get_block(0, 0, 0).unwrap();
+        assert_eq!(block.get_property("facing"), Some(&"up".to_string()));
+
+        // Verify the signal strength items
+        let barrel_entity = schematic.get_block_entity(BlockPosition { x: 0, y: 0, z: 0 }).unwrap();
+        let items = barrel_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = items {
+            let mut total_items = 0;
+            for item in items {
+                if let NbtValue::Compound(item_map) = item {
+                    if let Some(NbtValue::Byte(count)) = item_map.get("Count") {
+                        total_items += *count as u32;
+                    }
+                }
+            }
+            let expected_items = UniversalSchematic::calculate_items_for_signal(7);
+            assert_eq!(total_items as u32, expected_items);
+        }
+    }
 
 
 

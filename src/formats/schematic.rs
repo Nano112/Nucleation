@@ -280,7 +280,7 @@ fn decode_varint<R: Read>(reader: &mut R) -> Result<u32, Box<dyn std::error::Err
 
 fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
     let block_data_i8 = region_tag.get::<_, &Vec<i8>>("BlockData") // V2
-        .unwrap_or(region_tag.get::<_, &Vec<i8>>("Data")?); // V3
+        .or(region_tag.get::<_, &Vec<i8>>("Data"))?; // V3
     let block_data_u8: Vec<u8> = block_data_i8.iter().map(|&x| x as u8).collect();
     let mut block_data = Vec::new();
 

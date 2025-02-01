@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use minecraft_schematic_utils::{BlockState, litematic, schematic};
+use minecraft_schematic_utils::{BlockState, litematic, schematic, UniversalSchematic};
 
 #[test]
 fn test_litematic_to_schem_conversion() {
@@ -108,4 +108,45 @@ fn test_schema_to_litematic_conversion() {
     let output_litematic_path = format!("tests/output/{}.litematic", name);
     let litematic_path = Path::new(&output_litematic_path);
     fs::write(litematic_path, &litematic_data).expect("Failed to write litematic file");
+}
+
+
+
+#[test]
+fn test_create_schematic_with_repeater() {
+    let name = "repeater_test";
+
+    // Create a new UniversalSchematic
+    let mut schematic = UniversalSchematic::new( "repeater_test".to_string());
+
+    // Add a block to the schematic
+    // schematic.set_block_from_string(0, 0, 0, "minecraft:stone").expect("TODO: panic message");
+    // schematic.set_block_from_string(0, 1, 0, "minecraft:repeater[facing=north,delay=1,powered=false,locked=false]").expect("TODO: panic message");
+    for x in 0..16 {
+        schematic.set_block_from_string(x, 0, 0, "minecraft:stone").expect("TODO: panic message");
+        let delay = x % 4 + 1;
+        let powered = if x > 3 && x < 8 || x > 11 { "true" } else { "false" };
+        let locked = x >= 8;
+        schematic.set_block_from_string(x, 1, 0, &format!("minecraft:repeater[facing=east,delay={},powered={},locked={}]", delay, powered, locked)).expect("TODO: panic message");
+        schematic.set_block_from_string(x, 1, 1, &format!("minecraft:barrel[facing=up, open=false]{{signal={}}}",x)).expect("TODO: panic message");
+
+    }
+
+
+
+    // Convert the UniversalSchematic to .schem format
+    let schem_data = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
+
+    // save the .schem file
+    let output_schem_path = format!("tests/output/{}.schem", name);
+    let schem_path = Path::new(&output_schem_path);
+    fs::write(schem_path, &schem_data).expect("Failed to write schem file");
+
+
+    let lite_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
+
+    // save the .litematic file
+    let output_litematic_path = format!("tests/output/{}.litematic", name);
+    let litematic_path = Path::new(&output_litematic_path);
+    fs::write(litematic_path, &lite_data).expect("Failed to write litematic file");
 }

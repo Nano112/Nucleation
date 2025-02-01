@@ -71,9 +71,40 @@ impl BlockEntity {
 
     pub fn to_nbt(&self) -> NbtCompound {
         let mut nbt = NbtCompound::new();
+        // Store the core BlockEntity fields
+        nbt.insert("Id", NbtValue::String(self.id.clone()).to_quartz_nbt());
+        nbt.insert("Pos", NbtValue::IntArray(vec![
+            self.position.0,
+            self.position.1,
+            self.position.2
+        ]).to_quartz_nbt());
+
+        // Store the rest of the NBT data
         for (key, value) in &self.nbt {
             nbt.insert(key, value.to_quartz_nbt());
         }
         nbt
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item::ItemStack;
+
+    #[test]
+    fn test_block_entity_creation() {
+        let block_entity = BlockEntity::new("minecraft:chest".to_string(), (1, 2, 3));
+        assert_eq!(block_entity.id, "minecraft:chest");
+        assert_eq!(block_entity.position, (1, 2, 3));
+    }
+
+    #[test]
+    fn test_block_entity_with_nbt_data() {
+        let block_entity = BlockEntity::new("minecraft:chest".to_string(), (1, 2, 3))
+            .with_nbt_data("CustomName".to_string(), NbtValue::String("Test".to_string()));
+        assert_eq!(block_entity.nbt.get("CustomName"), Some(&NbtValue::String("Test".to_string())));
+    }
+
+
 }

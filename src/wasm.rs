@@ -13,6 +13,7 @@ use crate::{
 };
 use std::collections::HashMap;
 use mchprs_blocks::BlockPos;
+use crate::bounding_box::BoundingBox;
 use crate::mchprs_world::generate_truth_table;
 
 #[wasm_bindgen(start)]
@@ -81,6 +82,59 @@ impl SchematicWrapper {
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {
         self.0.set_block(x, y, z, BlockState::new(block_name.to_string()));
+    }
+
+    pub fn set_block_from_string(&mut self, x: i32, y: i32, z: i32, block_string: &str) -> Result<(), JsValue> {
+        self.0.set_block_from_string(x, y, z, block_string)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse block string: {}", e)))?;
+        Ok(())
+    }
+
+    pub fn copy_region(
+        &mut self,
+        from_schematic: &SchematicWrapper,
+        min_x: i32,
+        min_y: i32,
+        min_z: i32,
+        max_x: i32,
+        max_y: i32,
+        max_z: i32,
+        target_x: i32,
+        target_y: i32,
+        target_z: i32,
+        excluded_blocks: &JsValue,
+    ) -> Result<(), JsValue> {
+        let bounds = BoundingBox::new(
+            (min_x, min_y, min_z),
+            (max_x, max_y, max_z)
+        );
+
+        let excluded_blocks = if !excluded_blocks.is_undefined() && !excluded_blocks.is_null() {
+            let js_array: Array = excluded_blocks.clone().dyn_into().map_err(|_| {
+                JsValue::from_str("Excluded blocks should be an array")
+            })?;
+            let mut rust_vec: Vec<BlockState> = Vec::new();
+            for i in 0..js_array.length() {
+                let block_string = match js_array.get(i).as_string() {
+                    Some(name) => name,
+                    None => return Err(JsValue::from_str("Excluded blocks should be strings"))
+                };
+                let (block_state, _) = UniversalSchematic::parse_block_string(&block_string)
+                    .map_err(|e| JsValue::from_str(&format!("Invalid block state: {}", e)))?;
+                rust_vec.push(block_state);
+            }
+
+            rust_vec
+        } else {
+            Vec::new()  // Return empty vec instead of None
+        };
+
+        self.0.copy_region(
+            &from_schematic.0,
+            &bounds,
+            (target_x, target_y, target_z),
+            &excluded_blocks  // Now we can pass a direct reference to the Vec
+        ).map_err(|e| JsValue::from_str(&format!("Failed to copy region: {}", e)))
     }
 
 

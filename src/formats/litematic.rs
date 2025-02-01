@@ -77,6 +77,9 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
     metadata.insert("Description", NbtTag::String(schematic.metadata.description.clone().unwrap_or_default()));
     metadata.insert("Author", NbtTag::String(schematic.metadata.author.clone().unwrap_or_default()));
 
+    #[cfg(feature = "wasm")]
+    let now = (js_sys::Date::now() as i64);
+    #[cfg(not(feature = "wasm"))]
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
     metadata.insert("TimeCreated", NbtTag::Long(schematic.metadata.created.unwrap_or(now as u64) as i64));
     metadata.insert("TimeModified", NbtTag::Long(schematic.metadata.modified.unwrap_or(now as u64) as i64));

@@ -48,10 +48,11 @@ impl SchematicWrapper {
 
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
-        console::log_1(&"Parsing schematic data".into());
         if litematic::is_litematic(data) {
+            console::log_1(&"Parsing litematic data".into());
             self.from_litematic(data)
         } else if schematic::is_schematic(data) {
+            console::log_1(&"Parsing schematic data".into());
             self.from_schematic(data)
         } else {
             Err(JsValue::from_str("Unknown or unsupported schematic format"))

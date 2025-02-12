@@ -133,6 +133,19 @@ fn schema_to_litematic_conversion(name: &str) {
 }
 
 
+#[test]
+fn load_evaluator_schematic(){
+    let input_path_str = format!("tests/samples/Evaluator.schem");
+    let schem_path = Path::new(&input_path_str);
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+    let schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+    let block_entities = schematic.get_block_entities_as_list();
+    let entities = schematic.get_entities_as_list();
+    println!("{:?}", block_entities);
+    println!("{:?}", entities);
+}
+
+
 
 
 struct TestFiles<'a> {

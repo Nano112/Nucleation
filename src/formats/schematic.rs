@@ -13,6 +13,10 @@ use crate::region::Region;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::JsValue;
 
+#[cfg(feature = "wasm")]
+use web_sys::console;
+
+
 pub fn is_schematic(data: &[u8]) -> bool {
     // Decompress the data
     let mut decoder = GzDecoder::new(data);
@@ -33,13 +37,32 @@ pub fn is_schematic(data: &[u8]) -> bool {
         }
     };
 
-    // Check for required fields as per the Sponge Schematic Specification
-    root.get::<_, i32>("Version").is_ok() &&
-        root.get::<_, i32>("DataVersion").is_ok() &&
-        root.get::<_, i16>("Width").is_ok() &&
-        root.get::<_, i16>("Height").is_ok() &&
-        root.get::<_, i16>("Length").is_ok() &&
-        root.get::<_, &Vec<i8>>("BlockData").is_ok()
+
+    //things should be under Schematic tag if not treat root as the schematic
+    let root = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
+
+    // get tge version of the schematic
+    let version = root.get::<_, i32>("Version");
+    #[cfg(feature = "wasm")]
+    console::log_1(&format!("Schematic Version: {:?}", version).into());
+    if version.is_err() {
+        return root.get::<_, &NbtCompound>("Blocks").is_ok();
+    }
+
+
+    // Check if it's a v3 schematic (which has a Blocks compound)
+    if version.unwrap() == 3 {
+        #[cfg(feature = "wasm")]
+        console::log_1(&format!("Detected v3 schematic").into());
+        return root.get::<_, &NbtCompound>("Blocks").is_ok();
+    }
+
+    // Otherwise check for v2 format
+    root.get::<_, i32>("DataVersion").is_ok() &&
+    root.get::<_, i16>("Width").is_ok() &&
+    root.get::<_, i16>("Height").is_ok() &&
+    root.get::<_, i16>("Length").is_ok() &&
+    root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {

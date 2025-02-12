@@ -111,6 +111,14 @@ impl UniversalSchematic {
         block_entities
     }
 
+    pub fn get_entities_as_list(&self) -> Vec<Entity> {
+        let mut entities = Vec::new();
+        for region in self.regions.values() {
+            entities.extend(region.entities.clone());
+        }
+        entities
+    }
+
     pub fn set_block_entity(&mut self, position: BlockPosition, block_entity: BlockEntity) -> bool {
         let region_name = self.default_region_name.clone();
         self.set_block_entity_in_region(&region_name, position, block_entity)

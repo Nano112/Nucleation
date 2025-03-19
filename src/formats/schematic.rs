@@ -247,11 +247,17 @@ fn parse_block_state(input: &str) -> BlockState {
 fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
     let mut nbt_palette = NbtCompound::new();
     let mut max_id = 0;
+    
+    // Always ensure air is at index 0
     nbt_palette.insert("minecraft:air", NbtTag::Int(0));
+    
+    let mut next_id = 1; // Start at 1 since air is at 0
+    
     for (id, block_state) in palette.iter().enumerate() {
         if block_state.name == "minecraft:air" {
-            continue;
+            continue; // Skip air blocks as we already added it at index 0
         }
+        
         let key = if block_state.properties.is_empty() {
             block_state.name.clone()
         } else {
@@ -261,8 +267,10 @@ fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
                         .collect::<Vec<_>>()
                         .join(","))
         };
-        nbt_palette.insert(&key, NbtTag::Int(id as i32));
-        max_id = max_id.max(id);
+        
+        nbt_palette.insert(&key, NbtTag::Int(next_id));
+        max_id = max_id.max(next_id);
+        next_id += 1;
     }
 
     (nbt_palette, max_id as i32)
@@ -475,10 +483,12 @@ mod tests {
 
         let (nbt_palette, max_id) = convert_palette(&palette);
 
-        assert_eq!(max_id, 2);
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 0);
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 1);
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 2);
+        // Air is always at index 0, and other blocks follow
+        assert_eq!(max_id, 3); // Now we have 4 entries: air, stone, dirt, wool
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 3);
     }
 
 

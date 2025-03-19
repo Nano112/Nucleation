@@ -146,6 +146,23 @@ fn load_evaluator_schematic(){
 }
 
 
+#[test]
+fn test_cube_schematic() {
+    let input_path_str = format!("tests/samples/test_cube.schem");
+
+    let schem_path = Path::new(&input_path_str);
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+    let schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+
+    //save the schematic as litematic
+    let litematic_data = litematic::to_litematic(&schematic).expect("Failed to convert to litematic");
+    let output_litematic_path = format!("tests/output/test_cube.litematic");
+    let litematic_path = Path::new(&output_litematic_path);
+    fs::write
+        (litematic_path, &litematic_data).expect("Failed to write litematic file");
+}
+
+
 
 
 struct TestFiles<'a> {

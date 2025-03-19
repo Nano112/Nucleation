@@ -121,12 +121,77 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
         region_nbt.insert("Size", NbtTag::Compound(size));
 
         // BlockStatePalette
-        let palette = NbtList::from(region.palette.iter().map(|block_state| block_state.to_nbt()).collect::<Vec<NbtTag>>());
+        // Create a reordered palette with air always at index 0
+        let mut reordered_palette = Vec::new();
+        
+        // First, find and add air
+        let air_index = region.palette.iter().position(|block| block.name == "minecraft:air");
+        if let Some(air_idx) = air_index {
+            reordered_palette.push(region.palette[air_idx].clone());
+        } else {
+            // If no air is found, add it
+            reordered_palette.push(BlockState::new("minecraft:air".to_string()));
+        }
+        
+        // Then add all other blocks (skipping air since we already added it)
+        for block in region.palette.iter() {
+            if block.name != "minecraft:air" {
+                reordered_palette.push(block.clone());
+            }
+        }
+        
+        // Create the NBT list for the reordered palette
+        let palette = NbtList::from(reordered_palette.iter().map(|block_state| block_state.to_nbt()).collect::<Vec<NbtTag>>());
         region_nbt.insert("BlockStatePalette", NbtTag::List(palette));
 
         // BlockStates
-        let block_states = region.create_packed_block_states();
-        region_nbt.insert("BlockStates", NbtTag::LongArray(block_states));
+        // We need to map block indices from the original palette to the reordered palette
+        let mut index_mapping = vec![0; region.palette.len()];
+        
+        // Build the mapping from original palette indices to reordered indices
+        for (orig_idx, block) in region.palette.iter().enumerate() {
+            if block.name == "minecraft:air" {
+                // Air is always mapped to 0 in the reordered palette
+                index_mapping[orig_idx] = 0;
+            } else {
+                // Find the position of this block in the reordered palette
+                // Air is at 0, so non-air blocks start at index 1
+                let reordered_idx = reordered_palette.iter().position(|b| *b == *block).unwrap();
+                index_mapping[orig_idx] = reordered_idx;
+            }
+        }
+        
+        // Remap block indices and create packed states
+        let bits_per_block = std::cmp::max((reordered_palette.len() as f64).log2().ceil() as usize, 2);
+        let size = region.blocks.len();
+        let expected_len = (size * bits_per_block + 63) / 64;
+        
+        let mut packed_states = vec![0i64; expected_len];
+        let mask = (1i64 << bits_per_block) - 1;
+        
+        for (index, &block_state) in region.blocks.iter().enumerate() {
+            // Map the original block state index to the reordered index
+            let mapped_state = index_mapping[block_state];
+            
+            let bit_index = index * bits_per_block;
+            let start_long_index = bit_index / 64;
+            let end_long_index = (bit_index + bits_per_block - 1) / 64;
+            let start_offset = bit_index % 64;
+            
+            let value = (mapped_state as i64) & mask;
+            
+            if start_long_index == end_long_index {
+                packed_states[start_long_index] |= value << start_offset;
+            } else {
+                packed_states[start_long_index] |= value << start_offset;
+                packed_states[end_long_index] |= value >> (64 - start_offset);
+            }
+        }
+        
+        // Handle negative numbers
+        packed_states.iter_mut().for_each(|x| *x = *x as u64 as i64);
+        
+        region_nbt.insert("BlockStates", NbtTag::LongArray(packed_states));
 
         // Entities
         let entities = NbtList::from(region.entities.iter().map(|entity| entity.to_nbt()).collect::<Vec<NbtTag>>());

@@ -2,7 +2,7 @@ use crate::utils::{NbtMap, parse_custom_name, parse_items_array};
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
-use crate::{ BlockState};
+use crate::{BlockState};
 use crate::block_entity::BlockEntity;
 use crate::block_position::BlockPosition;
 use crate::bounding_box::BoundingBox;
@@ -48,34 +48,34 @@ impl UniversalSchematic {
     }
 
 
-        pub fn from_layers(name: String, block_mappings: &[(&'static char, SimpleBlockMapping)], layers: &str) -> Self {
-            let mut schematic = UniversalSchematic::new(name);
-            let full_mappings = Self::convert_to_full_mappings(block_mappings);
+    pub fn from_layers(name: String, block_mappings: &[(&'static char, SimpleBlockMapping)], layers: &str) -> Self {
+        let mut schematic = UniversalSchematic::new(name);
+        let full_mappings = Self::convert_to_full_mappings(block_mappings);
 
-            let layers: Vec<&str> = layers.split("\n\n")
-                .map(|layer| layer.trim())
-                .filter(|layer| !layer.is_empty())
+        let layers: Vec<&str> = layers.split("\n\n")
+            .map(|layer| layer.trim())
+            .filter(|layer| !layer.is_empty())
+            .collect();
+
+        for (y, layer) in layers.iter().enumerate() {
+            let rows: Vec<&str> = layer.lines()
+                .map(|row| row.trim())
+                .filter(|row| !row.is_empty())
                 .collect();
 
-            for (y, layer) in layers.iter().enumerate() {
-                let rows: Vec<&str> = layer.lines()
-                    .map(|row| row.trim())
-                    .filter(|row| !row.is_empty())
-                    .collect();
-
-                for (z, row) in rows.iter().enumerate() {
-                    for (x, c) in row.chars().enumerate() {
-                        if let Some(block_state) = full_mappings.get(&c) {
-                            schematic.set_block(x as i32, y as i32, z as i32, block_state.clone());
-                        } else if c != ' ' {
-                            println!("Warning: Unknown character '{}' at position ({}, {}, {})", c, x, y, z);
-                        }
+            for (z, row) in rows.iter().enumerate() {
+                for (x, c) in row.chars().enumerate() {
+                    if let Some(block_state) = full_mappings.get(&c) {
+                        schematic.set_block(x as i32, y as i32, z as i32, block_state.clone());
+                    } else if c != ' ' {
+                        println!("Warning: Unknown character '{}' at position ({}, {}, {})", c, x, y, z);
                     }
                 }
             }
-
-            schematic
         }
+
+        schematic
+    }
 
     fn convert_to_full_mappings(simple_mappings: &[(&'static char, SimpleBlockMapping)]) -> HashMap<char, BlockState> {
         simple_mappings.iter().map(|(&c, (name, props))| {
@@ -130,8 +130,6 @@ impl UniversalSchematic {
         });
 
         region.set_block_entity(position, block_entity)
-
-
     }
 
     pub fn get_blocks(&self) -> Vec<BlockState> {
@@ -164,7 +162,6 @@ impl UniversalSchematic {
     }
 
 
-
     pub fn get_json_string(&self) -> Result<String, String> {
         // Attempt to serialize the name
         let metadata_json = serde_json::to_string(&self.metadata)
@@ -191,7 +188,6 @@ impl UniversalSchematic {
     pub(crate) fn total_volume(&self) -> i32 {
         self.regions.values().map(|r| r.volume() as i32).sum()
     }
-
 
 
     pub fn get_region_bounding_box(&self, region_name: &str) -> Option<BoundingBox> {
@@ -364,81 +360,81 @@ impl UniversalSchematic {
     }
 
 
-        pub fn copy_region(
-            &mut self,
-            from_schematic: &UniversalSchematic,
-            bounds: &BoundingBox,
-            target_position: (i32, i32, i32),
-            excluded_blocks: &[BlockState],
-        ) -> Result<(), String> {
-            let offset = (
-                target_position.0 - bounds.min.0,
-                target_position.1 - bounds.min.1,
-                target_position.2 - bounds.min.2
-            );
+    pub fn copy_region(
+        &mut self,
+        from_schematic: &UniversalSchematic,
+        bounds: &BoundingBox,
+        target_position: (i32, i32, i32),
+        excluded_blocks: &[BlockState],
+    ) -> Result<(), String> {
+        let offset = (
+            target_position.0 - bounds.min.0,
+            target_position.1 - bounds.min.1,
+            target_position.2 - bounds.min.2
+        );
 
-            // Copy blocks
-            for x in bounds.min.0..=bounds.max.0 {
-                for y in bounds.min.1..=bounds.max.1 {
-                    for z in bounds.min.2..=bounds.max.2 {
-                        if let Some(block) = from_schematic.get_block(x, y, z) {
-                            if excluded_blocks.contains(block) {
-                                continue;
-                            }
-                            let new_x = x + offset.0;
-                            let new_y = y + offset.1;
-                            let new_z = z + offset.2;
-                            self.set_block(new_x, new_y, new_z, block.clone());
+        // Copy blocks
+        for x in bounds.min.0..=bounds.max.0 {
+            for y in bounds.min.1..=bounds.max.1 {
+                for z in bounds.min.2..=bounds.max.2 {
+                    if let Some(block) = from_schematic.get_block(x, y, z) {
+                        if excluded_blocks.contains(block) {
+                            continue;
                         }
+                        let new_x = x + offset.0;
+                        let new_y = y + offset.1;
+                        let new_z = z + offset.2;
+                        self.set_block(new_x, new_y, new_z, block.clone());
                     }
                 }
             }
-
-            // Copy block entities
-            for x in bounds.min.0..=bounds.max.0 {
-                for y in bounds.min.1..=bounds.max.1 {
-                    for z in bounds.min.2..=bounds.max.2 {
-                        let pos = BlockPosition { x, y, z };
-                        if let Some(block_entity) = from_schematic.get_block_entity(pos) {
-                            let mut new_block_entity = block_entity.clone();
-                            new_block_entity.position = (
-                                block_entity.position.0 + offset.0,
-                                block_entity.position.1 + offset.1,
-                                block_entity.position.2 + offset.2
-                            );
-                            self.set_block_entity(BlockPosition {
-                                x: x + offset.0,
-                                y: y + offset.1,
-                                z: z + offset.2
-                            }, new_block_entity);
-                        }
-                    }
-                }
-            }
-
-            // Copy entities that are within the bounds
-            for region in from_schematic.regions.values() {
-                for entity in &region.entities {
-                    let entity_pos = (
-                        entity.position.0.floor() as i32,
-                        entity.position.1.floor() as i32,
-                        entity.position.2.floor() as i32
-                    );
-
-                    if bounds.contains(entity_pos) {
-                        let mut new_entity = entity.clone();
-                        new_entity.position = (
-                            entity.position.0 + offset.0 as f64,
-                            entity.position.1 + offset.1 as f64,
-                            entity.position.2 + offset.2 as f64
-                        );
-                        self.add_entity(new_entity);
-                    }
-                }
-            }
-
-            Ok(())
         }
+
+        // Copy block entities
+        for x in bounds.min.0..=bounds.max.0 {
+            for y in bounds.min.1..=bounds.max.1 {
+                for z in bounds.min.2..=bounds.max.2 {
+                    let pos = BlockPosition { x, y, z };
+                    if let Some(block_entity) = from_schematic.get_block_entity(pos) {
+                        let mut new_block_entity = block_entity.clone();
+                        new_block_entity.position = (
+                            block_entity.position.0 + offset.0,
+                            block_entity.position.1 + offset.1,
+                            block_entity.position.2 + offset.2
+                        );
+                        self.set_block_entity(BlockPosition {
+                            x: x + offset.0,
+                            y: y + offset.1,
+                            z: z + offset.2,
+                        }, new_block_entity);
+                    }
+                }
+            }
+        }
+
+        // Copy entities that are within the bounds
+        for region in from_schematic.regions.values() {
+            for entity in &region.entities {
+                let entity_pos = (
+                    entity.position.0.floor() as i32,
+                    entity.position.1.floor() as i32,
+                    entity.position.2.floor() as i32
+                );
+
+                if bounds.contains(entity_pos) {
+                    let mut new_entity = entity.clone();
+                    new_entity.position = (
+                        entity.position.0 + offset.0 as f64,
+                        entity.position.1 + offset.1 as f64,
+                        entity.position.2 + offset.2 as f64
+                    );
+                    self.add_entity(new_entity);
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Chunk> {
         use std::collections::HashMap;
@@ -447,7 +443,7 @@ impl UniversalSchematic {
 
         // Helper function to get chunk coordinate
         let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
-            let offset = if pos < 0 { chunk_size - 1  } else { 0 };
+            let offset = if pos < 0 { chunk_size - 1 } else { 0 };
             (pos - offset) / chunk_size
         };
 
@@ -481,10 +477,7 @@ impl UniversalSchematic {
     }
 
 
-
-
-
-    pub fn iter_blocks(&self) -> impl Iterator<Item = (BlockPosition, &BlockState)> {
+    pub fn iter_blocks(&self) -> impl Iterator<Item=(BlockPosition, &BlockState)> {
         self.regions.values().flat_map(|region| {
             region.blocks.iter().enumerate().filter_map(move |(index, block_index)| {
                 let (x, y, z) = region.index_to_coords(index);
@@ -496,7 +489,7 @@ impl UniversalSchematic {
         })
     }
 
-    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> impl Iterator<Item = Chunk> + '_ {
+    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> impl Iterator<Item=Chunk> + '_ {
         self.split_into_chunks(chunk_width, chunk_height, chunk_length)
             .into_iter()
             .map(move |chunk| {
@@ -529,7 +522,7 @@ impl UniversalSchematic {
         if let Some(nbt_data) = nbt_data {
             let mut block_entity = BlockEntity::new(
                 block_state.name.clone(),
-                (x, y, z)
+                (x, y, z),
             );
 
             // Add NBT data
@@ -687,7 +680,7 @@ impl UniversalSchematic {
                         new_schematic.set_block_entity(BlockPosition {
                             x: x + offset.0,
                             y: y + offset.1,
-                            z: z + offset.2
+                            z: z + offset.2,
                         }, new_block_entity);
                     }
                 }
@@ -717,10 +710,6 @@ impl UniversalSchematic {
 
         new_schematic
     }
-
-
-
-
 }
 
 #[cfg(test)]
@@ -730,8 +719,6 @@ mod tests {
     use crate::block_entity;
     use crate::item::ItemStack;
     use super::*;
-
-
 
 
     #[test]
@@ -777,6 +764,44 @@ mod tests {
         assert_eq!(schematic.get_block_from_region("Region2", 20, 0, 0), None);
     }
 
+    #[test]
+    fn test_bounding_box_and_dimensions() {
+        // Create a new empty schematic
+        let mut schematic = UniversalSchematic::new("Test Bounding Box".to_string());
+
+        // Initially, the schematic should be empty or have minimal dimensions
+        let initial_bbox = schematic.get_bounding_box();
+        println!("Initial bounding box: {:?}", initial_bbox);
+        println!("Initial dimensions: {:?}", schematic.get_dimensions());
+
+        // Add blocks at various positions to test expansion
+        schematic.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
+        schematic.set_block(4, 4, 4, BlockState::new("minecraft:sea_lantern".to_string()));
+
+        // Now check the bounding box and dimensions
+        let bbox = schematic.get_bounding_box();
+        println!("Updated bounding box: min={:?}, max={:?}", bbox.min, bbox.max);
+
+        // The bounding box should contain points from (0,0,0) to (4,4,4)
+        assert_eq!(bbox.min, (0, 0, 0));
+        assert_eq!(bbox.max, (4, 4, 4));
+
+        // The dimensions should be 5x5x5 (including both end points)
+        let dimensions = schematic.get_dimensions();
+        assert_eq!(dimensions, (5, 5, 5));
+
+        // Add a block with negative coordinates to test expansion in that direction
+        schematic.set_block(-3, 2, 1, BlockState::new("minecraft:dirt".to_string()));
+
+        // Check the updated bounding box
+        let expanded_bbox = schematic.get_bounding_box();
+        assert_eq!(expanded_bbox.min, (-3, 0, 0));
+        assert_eq!(expanded_bbox.max, (4, 4, 4));
+
+        // And the updated dimensions
+        let expanded_dimensions = schematic.get_dimensions();
+        assert_eq!(expanded_dimensions, (8, 5, 5));
+    }
 
 
     #[test]
@@ -922,7 +947,6 @@ mod tests {
     }
 
 
-
     #[test]
     fn test_entity_operations() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
@@ -936,7 +960,7 @@ mod tests {
         assert_eq!(region.entities.len(), 1);
         assert_eq!(region.entities[0], entity);
 
-        let removed_entity = schematic.remove_entity( 0).unwrap();
+        let removed_entity = schematic.remove_entity(0).unwrap();
         assert_eq!(removed_entity, entity);
 
         let region = schematic.get_region("Main").unwrap();
@@ -952,7 +976,7 @@ mod tests {
             ItemStack::new("minecraft:diamond", 64).with_slot(0)
         ]);
 
-        assert!(schematic.add_block_entity( chest.clone()));
+        assert!(schematic.add_block_entity(chest.clone()));
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 1);
@@ -972,7 +996,7 @@ mod tests {
         let diamond = ItemStack::new("minecraft:diamond", 64).with_slot(0);
         let chest = BlockEntity::create_chest((5, 10, 15), vec![diamond]);
 
-        assert!(schematic.add_block_entity( chest.clone()));
+        assert!(schematic.add_block_entity(chest.clone()));
 
         let region = schematic.get_region("Main").unwrap();
         assert_eq!(region.block_entities.len(), 1);
@@ -988,8 +1012,6 @@ mod tests {
     #[test]
     fn test_block_entity_in_region_operations() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
-
-
 
 
         let chest = BlockEntity::create_chest((5, 10, 15), vec![ItemStack::new("minecraft:diamond", 64).with_slot(0)]);
@@ -1105,9 +1127,8 @@ mod tests {
     }
 
 
-
     #[test]
-    fn test_multiple_region_merging(){
+    fn test_multiple_region_merging() {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
 
         let mut region1 = Region::new("Region1".to_string(), (0, 0, 0), (2, 2, 2));
@@ -1195,7 +1216,4 @@ mod tests {
             assert_eq!(total_items as u32, expected_items);
         }
     }
-
-
-
 }

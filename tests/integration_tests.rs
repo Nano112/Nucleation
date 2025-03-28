@@ -163,6 +163,39 @@ fn test_cube_schematic() {
 }
 
 
+#[test]
+fn test_expand_schematic() {
+    // Create a new empty schematic
+    let mut schematic = UniversalSchematic::new("Default".to_string());
+
+    // Print initial state
+    println!("Initial dimensions: {:?}", schematic.get_dimensions());
+    println!("Initial bbox: {:?}", schematic.get_bounding_box());
+
+    // Set a block
+    let result = schematic.set_block(4, 4, 4, BlockState::new("minecraft:sea_lantern".to_string()));
+    println!("Block set result: {}", result);
+
+    // Print region info
+    if let Some(region) = schematic.get_region("Main") {
+        println!("Region position: {:?}", region.position);
+        println!("Region size: {:?}", region.size);
+        println!("Region bbox: {:?}", region.get_bounding_box());
+    }
+
+    // Check if block was set
+    let block = schematic.get_block(4, 4, 4);
+    println!("Block at (4,4,4): {:?}", block.map(|b| b.get_name()));
+
+    // Print final state
+    println!("Final dimensions: {:?}", schematic.get_dimensions());
+    println!("Final bbox: {:?}", schematic.get_bounding_box());
+
+    // Assert expected dimensions
+    assert_eq!(schematic.get_dimensions(), (5, 5, 5));
+}
+
+
 
 
 struct TestFiles<'a> {

@@ -44,6 +44,7 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = tru
 js-sys = { version = "0.3.70", optional = true }
 serde-wasm-bindgen = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["console"] }
+rand = "0.9.1"
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }

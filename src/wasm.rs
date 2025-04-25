@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use mchprs_blocks::BlockPos;
 use crate::bounding_box::BoundingBox;
 use crate::mchprs_world::generate_truth_table;
+use crate::universal_schematic::ChunkLoadingStrategy;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -292,7 +293,7 @@ impl SchematicWrapper {
     }
 
     pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Array {
-        self.0.iter_chunks(chunk_width, chunk_height, chunk_length)
+        self.0.iter_chunks(chunk_width, chunk_height, chunk_length, None)
             .map(|chunk| {
                 let chunk_obj = js_sys::Object::new();
                 js_sys::Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();
@@ -322,7 +323,58 @@ impl SchematicWrapper {
             .collect::<Array>()
     }
 
+    pub fn chunks_with_strategy(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32,
+        strategy: &str,
+        camera_x: f32,
+        camera_y: f32,
+        camera_z: f32
+    ) -> Array {
+        // Map the string strategy to enum
+        let strategy_enum = match strategy {
+            "distance_to_camera" => Some(ChunkLoadingStrategy::DistanceToCamera(camera_x, camera_y, camera_z)),
+            "top_down" => Some(ChunkLoadingStrategy::TopDown),
+            "bottom_up" => Some(ChunkLoadingStrategy::BottomUp),
+            "center_outward" => Some(ChunkLoadingStrategy::CenterOutward),
+            "random" => Some(ChunkLoadingStrategy::Random),
+            _ => None // Default
+        };
 
+        // Use the enhanced iter_chunks method
+        self.0.iter_chunks(chunk_width, chunk_height, chunk_length, strategy_enum)
+            .map(|chunk| {
+                let chunk_obj = js_sys::Object::new();
+                js_sys::Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();
+                js_sys::Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk.chunk_y.into()).unwrap();
+                js_sys::Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk.chunk_z.into()).unwrap();
+
+                let blocks_array = chunk.positions.into_iter()
+                    .map(|pos| {
+                        let block = self.0.get_block(pos.x, pos.y, pos.z).unwrap();
+                        let obj = js_sys::Object::new();
+                        js_sys::Reflect::set(&obj, &"x".into(), &pos.x.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"y".into(), &pos.y.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"z".into(), &pos.z.into()).unwrap();
+                        js_sys::Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
+                        let properties = js_sys::Object::new();
+                        for (key, value) in &block.properties {
+                            js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                        }
+                        js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+                        obj
+                    })
+                    .collect::<Array>();
+
+                js_sys::Reflect::set(&chunk_obj, &"blocks".into(), &blocks_array).unwrap();
+                chunk_obj
+            })
+            .collect::<Array>()
+    }
+
+    
     pub fn get_chunk_blocks(&self, offset_x: i32, offset_y: i32, offset_z: i32, width: i32, height: i32, length: i32) -> js_sys::Array {
         let blocks = self.0.iter_blocks()
             .filter(|(pos, _)| {

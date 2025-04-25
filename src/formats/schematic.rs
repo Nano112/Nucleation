@@ -1,10 +1,10 @@
-use std::io::{Cursor, Read};
+use std::io::{BufReader, Cursor, Read};
 
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
-use quartz_nbt::io::Flavor;
+use quartz_nbt::io::{read_nbt, Flavor};
 use crate::{BlockState, UniversalSchematic};
 use crate::block_entity::BlockEntity;
 use crate::entity::Entity;
@@ -19,16 +19,9 @@ use web_sys::console;
 
 pub fn is_schematic(data: &[u8]) -> bool {
     // Decompress the data
-    let mut decoder = GzDecoder::new(data);
-    let mut decompressed = Vec::new();
-    if decoder.read_to_end(&mut decompressed).is_err() {
-        #[cfg(feature = "wasm")]
-        let _: Result<(), JsValue> = Err(JsValue::from_str("Failed to decompress data"));
-        return false;
-    }
-
-    // Read the NBT data
-    let (root, _) = match quartz_nbt::io::read_nbt(&mut Cursor::new(decompressed), Flavor::Uncompressed) {
+    let reader = BufReader::with_capacity(1 << 20, data); // 1 MiB buf
+    let mut gz = GzDecoder::new(reader);
+    let (root, _) = match read_nbt(&mut gz, Flavor::Uncompressed) {
         Ok(result) => result,
         Err(_) => {
             #[cfg(feature = "wasm")]
@@ -131,11 +124,9 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
 
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {
-    let mut decoder = GzDecoder::new(data);
-    let mut decompressed = Vec::new();
-    decoder.read_to_end(&mut decompressed)?;
-
-    let (root, _) = quartz_nbt::io::read_nbt(&mut std::io::Cursor::new(decompressed), quartz_nbt::io::Flavor::Uncompressed)?;
+    let reader   = BufReader::with_capacity(1 << 20, data);   // 1 MiB buf
+    let mut gz   = GzDecoder::new(reader);
+    let (root, _) = read_nbt(&mut gz, Flavor::Uncompressed)?;
 
     let schem = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
     let schem_version = schem.get::<_, i32>("Version")?;
@@ -310,36 +301,57 @@ fn decode_varint<R: Read>(reader: &mut R) -> Result<u32, Box<dyn std::error::Err
     }
 }
 
-fn parse_block_data(region_tag: &NbtCompound, width: u32, height: u32, length: u32) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    let block_data_i8 = region_tag.get::<_, &Vec<i8>>("BlockData") // V2
-        .or(region_tag.get::<_, &Vec<i8>>("Data"))?; // V3
-    let block_data_u8: Vec<u8> = block_data_i8.iter().map(|&x| x as u8).collect();
-    let mut block_data = Vec::new();
+fn parse_block_data(
+    region_tag: &NbtCompound,
+    width: u32,
+    height: u32,
+    length: u32,
+) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
+    // V2 = BlockData, V3 = Data
+    let block_data_i8 = region_tag
+        .get::<_, &Vec<i8>>("BlockData")
+        .or(region_tag.get::<_, &Vec<i8>>("Data"))?;
 
+    let mut block_data_u8: &[u8] = unsafe {
+        std::slice::from_raw_parts(block_data_i8.as_ptr() as *const u8,
+                                   block_data_i8.len())
+    };
 
-    let mut reader = Cursor::new(block_data_u8);
-    while reader.position() < block_data_i8.len() as u64 {
-        match decode_varint(&mut reader) {
-            Ok(value) => {
-                block_data.push(value);
-            },
-            Err(e) => {
-                println!("Error decoding varint at position {}: {:?}", reader.position(), e);
-                break;
+    // ---------- fast var-int decode ----------
+    #[inline]
+    fn read_varint(slice: &mut &[u8]) -> Option<u32> {
+        let mut out = 0u32;
+        let mut shift = 0;
+        while !slice.is_empty() {
+            let byte = slice[0];
+            *slice = &slice[1..];
+            out |= ((byte & 0x7F) as u32) << shift;
+            if byte & 0x80 == 0 {
+                return Some(out);
             }
+            shift += 7;
         }
+        None
     }
 
-
     let expected_length = (width * height * length) as usize;
+    let mut block_data: Vec<u32> = Vec::with_capacity(expected_length);
+
+    while let Some(id) = read_varint(&mut block_data_u8) {
+        block_data.push(id);
+    }
+
     if block_data.len() != expected_length {
-        println!("Block data length mismatch. Got: {}, Expected: {}", block_data.len(), expected_length);
-        println!("First 10 decoded values: {:?}", &block_data[..10.min(block_data.len())]);
-        println!("Last 10 decoded values: {:?}", &block_data[block_data.len().saturating_sub(10)..]);
+        return Err(format!(
+            "Block data length mismatch: expected {}, got {}",
+            expected_length,
+            block_data.len()
+        ).into());
     }
 
     Ok(block_data)
 }
+
 
 
 fn parse_block_entities(region_tag: &NbtCompound) -> Result<Vec<BlockEntity>, Box<dyn std::error::Error>> {

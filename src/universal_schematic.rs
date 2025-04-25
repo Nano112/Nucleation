@@ -1,6 +1,7 @@
 use crate::utils::{NbtMap, parse_custom_name, parse_items_array};
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use crate::{BlockState};
 use crate::block_entity::BlockEntity;
@@ -19,6 +20,14 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
+pub enum ChunkLoadingStrategy {
+    Default,
+    DistanceToCamera(f32, f32, f32), // Camera position
+    TopDown,
+    BottomUp,
+    CenterOutward,
+    Random
+}
 pub type SimpleBlockMapping = (&'static str, Vec<(&'static str, &'static str)>);
 
 impl UniversalSchematic {
@@ -489,25 +498,110 @@ impl UniversalSchematic {
         })
     }
 
-    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> impl Iterator<Item=Chunk> + '_ {
-        self.split_into_chunks(chunk_width, chunk_height, chunk_length)
-            .into_iter()
-            .map(move |chunk| {
-                let positions = chunk.positions;
-                let blocks = positions.into_iter()
-                    .filter_map(|pos| {
-                        self.get_block(pos.x, pos.y, pos.z)
-                            .map(|block| (pos, block))
-                    })
-                    .collect::<Vec<_>>();
+    pub fn iter_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32,
+                       strategy: Option<ChunkLoadingStrategy>) -> impl Iterator<Item=Chunk> + '_ {
+        let chunks = self.split_into_chunks(chunk_width, chunk_height, chunk_length);
 
-                Chunk {
-                    chunk_x: chunk.chunk_x,
-                    chunk_y: chunk.chunk_y,
-                    chunk_z: chunk.chunk_z,
-                    positions: blocks.iter().map(|(pos, _)| *pos).collect(),
-                }
-            })
+        // Apply sorting based on strategy
+        let mut ordered_chunks = chunks;
+        if let Some(strategy) = strategy {
+            match strategy {
+                ChunkLoadingStrategy::Default => {
+                    // Default order - no sorting needed
+                },
+                ChunkLoadingStrategy::DistanceToCamera(cam_x, cam_y, cam_z) => {
+                    // Sort by distance to camera
+                    ordered_chunks.sort_by(|a, b| {
+                        let a_center_x = (a.chunk_x * chunk_width) + (chunk_width / 2);
+                        let a_center_y = (a.chunk_y * chunk_height) + (chunk_height / 2);
+                        let a_center_z = (a.chunk_z * chunk_length) + (chunk_length / 2);
+
+                        let b_center_x = (b.chunk_x * chunk_width) + (chunk_width / 2);
+                        let b_center_y = (b.chunk_y * chunk_height) + (chunk_height / 2);
+                        let b_center_z = (b.chunk_z * chunk_length) + (chunk_length / 2);
+
+                        let a_dist = (a_center_x as f32 - cam_x).powi(2) +
+                            (a_center_y as f32 - cam_y).powi(2) +
+                            (a_center_z as f32 - cam_z).powi(2);
+
+                        let b_dist = (b_center_x as f32 - cam_x).powi(2) +
+                            (b_center_y as f32 - cam_y).powi(2) +
+                            (b_center_z as f32 - cam_z).powi(2);
+
+                        // Sort by ascending distance (closest first)
+                        a_dist.partial_cmp(&b_dist).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                },
+                ChunkLoadingStrategy::TopDown => {
+                    // Sort by y-coordinate, highest first
+                    ordered_chunks.sort_by(|a, b| b.chunk_y.cmp(&a.chunk_y));
+                },
+                ChunkLoadingStrategy::BottomUp => {
+                    // Sort by y-coordinate, lowest first
+                    ordered_chunks.sort_by(|a, b| a.chunk_y.cmp(&b.chunk_y));
+                },
+                ChunkLoadingStrategy::CenterOutward => {
+                    // Calculate schematic center in chunk coordinates
+                    let (width, height, depth) = self.get_dimensions();
+                    let center_x = (width / 2) / chunk_width;
+                    let center_y = (height / 2) / chunk_height;
+                    let center_z = (depth / 2) / chunk_length;
+
+                    // Sort by distance from center
+                    ordered_chunks.sort_by(|a, b| {
+                        let a_dist = (a.chunk_x - center_x).pow(2) +
+                            (a.chunk_y - center_y).pow(2) +
+                            (a.chunk_z - center_z).pow(2);
+
+                        let b_dist = (b.chunk_x - center_x).pow(2) +
+                            (b.chunk_y - center_y).pow(2) +
+                            (b.chunk_z - center_z).pow(2);
+
+                        a_dist.cmp(&b_dist)
+                    });
+                },
+                ChunkLoadingStrategy::Random => {
+                    // Shuffle the chunks using a deterministic seed
+                    use std::hash::{Hash, Hasher};
+                    use std::collections::hash_map::DefaultHasher;
+
+                    let mut hasher = DefaultHasher::new();
+                    if let Some(name) = &self.metadata.name {
+                        name.hash(&mut hasher);
+                    } else {
+                        "Default".hash(&mut hasher);
+                    }
+                    let seed = hasher.finish();
+
+                    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                    use rand::seq::SliceRandom;
+                    ordered_chunks.shuffle(&mut rng);
+                },
+            }
+        }
+
+        // Process each chunk like in the original implementation
+        ordered_chunks.into_iter().map(move |chunk| {
+            let positions = chunk.positions;
+            let blocks = positions.into_iter()
+                .filter_map(|pos| {
+                    self.get_block(pos.x, pos.y, pos.z)
+                        .map(|block| (pos, block))
+                })
+                .collect::<Vec<_>>();
+
+            Chunk {
+                chunk_x: chunk.chunk_x,
+                chunk_y: chunk.chunk_y,
+                chunk_z: chunk.chunk_z,
+                positions: blocks.iter().map(|(pos, _)| *pos).collect(),
+            }
+        })
+    }
+
+    // Keep the original method for backward compatibility
+    pub fn iter_chunks_original(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> impl Iterator<Item=Chunk> + '_ {
+        self.iter_chunks(chunk_width, chunk_height, chunk_length, None)
     }
 
     pub fn set_block_from_string(&mut self, x: i32, y: i32, z: i32, block_string: &str) -> Result<bool, String> {

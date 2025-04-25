@@ -164,6 +164,18 @@ fn test_cube_schematic() {
 
 
 #[test]
+fn time_load_large_schematic() {
+    let input_path_str = format!("tests/samples/large_schematic.schem");
+    let schem_path = Path::new(&input_path_str);
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+    let start_time = std::time::Instant::now();
+    let _schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+    let elapsed_time = start_time.elapsed();
+    println!("Time taken to load large schematic: {:?}", elapsed_time);
+}
+
+
+#[test]
 fn test_expand_schematic() {
     // Create a new empty schematic
     let mut schematic = UniversalSchematic::new("Default".to_string());

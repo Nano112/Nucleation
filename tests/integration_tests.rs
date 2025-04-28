@@ -215,11 +215,11 @@ fn test_create_large_schematic() {
     // Create a new empty schematic
     let mut schematic = UniversalSchematic::new("Default".to_string());
     let start = Instant::now();
-    
+
     // Set blocks in a 200x200x200 cube
-    for x in 0..1000 {
-        for y in 0..1000 {
-            for z in 0..1000 {
+    for x in 0..200 {
+        for y in 0..200 {
+            for z in 0..200 {
                 schematic.set_block(x, y, z, BlockState::new("minecraft:stone".to_string()));
             }
         }
@@ -238,7 +238,40 @@ fn test_create_large_schematic() {
     println!("Schematic saved to {}", output_path);
 
     // Assert expected dimensions
-    assert_eq!(schematic.get_dimensions(), (1000, 1000, 1000));
+    assert_eq!(schematic.get_dimensions(), (200, 200, 200));
+}
+
+
+
+// time loading tests/output/large_schematic.schem from schematic to universal schematic
+#[test]
+fn test_load_large_schematic() {
+    let input_path_str = format!("tests/output/large_schematic.schem");
+    let schem_path = Path::new(&input_path_str);
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+    let start_time = std::time::Instant::now();
+    let _schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+    let elapsed_time = start_time.elapsed();
+    println!("Time taken to load large schematic: {:?}", elapsed_time);
+}
+
+//time iterating over all blocks in a 200x200x200 schematic
+#[test]
+fn test_iterate_large_schematic() {
+    let input_path_str = format!("tests/output/large_schematic.schem");
+    let schem_path = Path::new(&input_path_str);
+    let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
+    let schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
+    let start_time = std::time::Instant::now();
+    for z in 0..200 {
+        for y in 0..200 {
+            for x in 0..200 {
+                let _block = schematic.get_block(x, y, z);
+            }
+        }
+    }
+    let elapsed_time = start_time.elapsed();
+    println!("Time taken to iterate over large schematic: {:?}", elapsed_time);
 }
 
 

@@ -43,20 +43,40 @@ impl UniversalSchematic {
         }
     }
 
-
+    // Ultra-optimized set_block that directly works with the default region
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block: BlockState) -> bool {
-        let region_name = self.default_region_name.clone();
-        self.set_block_in_region(&region_name, x, y, z, block)
+        // Direct path to the default region's set_block
+        match self.regions.get_mut(&self.default_region_name) {
+            Some(region) => region.set_block(x, y, z, block),
+            None => {
+                // Region doesn't exist yet - create it just once
+                let new_region = Region::new(self.default_region_name.clone(), (x, y, z), (1, 1, 1));
+                self.regions.insert(self.default_region_name.clone(), new_region);
+                // Now that it exists, set the block
+                self.regions.get_mut(&self.default_region_name).unwrap().set_block(x, y, z, block)
+            }
+        }
     }
 
+    // Regular version for non-default regions - separate code path
     pub fn set_block_in_region(&mut self, region_name: &str, x: i32, y: i32, z: i32, block: BlockState) -> bool {
-        let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
-            Region::new(region_name.to_string(), (x, y, z), (1, 1, 1))
-        });
+        // Special case for default region - use the optimized path
+        if region_name == self.default_region_name {
+            return self.set_block(x, y, z, block);
+        }
 
-        region.set_block(x, y, z, block)
+        // For other regions, use a separate code path
+        match self.regions.get_mut(region_name) {
+            Some(region) => region.set_block(x, y, z, block),
+            None => {
+                // Create region if it doesn't exist
+                let new_region = Region::new(region_name.to_string(), (x, y, z), (1, 1, 1));
+                self.regions.insert(region_name.to_string(), new_region);
+                // Now set the block
+                self.regions.get_mut(region_name).unwrap().set_block(x, y, z, block)
+            }
+        }
     }
-
 
     pub fn from_layers(name: String, block_mappings: &[(&'static char, SimpleBlockMapping)], layers: &str) -> Self {
         let mut schematic = UniversalSchematic::new(name);
@@ -135,17 +155,38 @@ impl UniversalSchematic {
         entities
     }
 
+    // Optimized set_block_entity with similar pattern
     pub fn set_block_entity(&mut self, position: BlockPosition, block_entity: BlockEntity) -> bool {
-        let region_name = self.default_region_name.clone();
-        self.set_block_entity_in_region(&region_name, position, block_entity)
+        match self.regions.get_mut(&self.default_region_name) {
+            Some(region) => region.set_block_entity(position, block_entity),
+            None => {
+                // Create region if it doesn't exist
+                let new_region = Region::new(self.default_region_name.clone(),
+                                             (position.x, position.y, position.z), (1, 1, 1));
+                self.regions.insert(self.default_region_name.clone(), new_region);
+                // Now set the block entity
+                self.regions.get_mut(&self.default_region_name).unwrap().set_block_entity(position, block_entity)
+            }
+        }
     }
 
+    // Separate code path for non-default regions
     pub fn set_block_entity_in_region(&mut self, region_name: &str, position: BlockPosition, block_entity: BlockEntity) -> bool {
-        let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
-            Region::new(region_name.to_string(), (position.x, position.y, position.z), (1, 1, 1))
-        });
+        if region_name == self.default_region_name {
+            return self.set_block_entity(position, block_entity);
+        }
 
-        region.set_block_entity(position, block_entity)
+        match self.regions.get_mut(region_name) {
+            Some(region) => region.set_block_entity(position, block_entity),
+            None => {
+                // Create region if it doesn't exist
+                let new_region = Region::new(region_name.to_string(),
+                                             (position.x, position.y, position.z), (1, 1, 1));
+                self.regions.insert(region_name.to_string(), new_region);
+                // Now set the block entity
+                self.regions.get_mut(region_name).unwrap().set_block_entity(position, block_entity)
+            }
+        }
     }
 
     pub fn get_blocks(&self) -> Vec<BlockState> {
@@ -175,7 +216,6 @@ impl UniversalSchematic {
         self.regions.values().nth(index)
     }
 
-
     pub fn get_block_from_region(&self, region_name: &str, x: i32, y: i32, z: i32) -> Option<&BlockState> {
         self.regions.get(region_name).and_then(|region| region.get_block(x, y, z))
     }
@@ -185,7 +225,6 @@ impl UniversalSchematic {
         bounding_box.get_dimensions()
     }
 
-
     pub fn get_json_string(&self) -> Result<String, String> {
         // Attempt to serialize the name
         let metadata_json = serde_json::to_string(&self.metadata)
@@ -194,7 +233,6 @@ impl UniversalSchematic {
         // Attempt to serialize the regions
         let regions_json = serde_json::to_string(&self.regions)
             .map_err(|e| format!("Failed to serialize 'regions' in UniversalSchematic: {}", e))?;
-
 
         // Combine everything into a single JSON object manually
         let combined_json = format!(
@@ -213,7 +251,6 @@ impl UniversalSchematic {
         self.regions.values().map(|r| r.volume() as i32).sum()
     }
 
-
     pub fn get_region_bounding_box(&self, region_name: &str) -> Option<BoundingBox> {
         self.regions.get(region_name).map(|region| region.get_bounding_box())
     }
@@ -229,7 +266,6 @@ impl UniversalSchematic {
         }
         Some(bounding_box)
     }
-
 
     pub fn add_region(&mut self, region: Region) -> bool {
         if self.regions.contains_key(&region.name) {
@@ -262,51 +298,122 @@ impl UniversalSchematic {
         merged_region
     }
 
-    pub fn add_block_entity_in_region(&mut self, region_name: &str, block_entity: BlockEntity) -> bool {
-        let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
-            Region::new(region_name.to_string(), block_entity.position, (1, 1, 1))
-        });
-
-        region.add_block_entity(block_entity);
-        true
-    }
-
-    pub fn remove_block_entity_in_region(&mut self, region_name: &str, position: (i32, i32, i32)) -> Option<BlockEntity> {
-        self.regions.get_mut(region_name)?.remove_block_entity(position)
-    }
-
+    // Optimized add_block_entity using the same pattern
     pub fn add_block_entity(&mut self, block_entity: BlockEntity) -> bool {
-        let region_name = self.default_region_name.clone();
-        self.add_block_entity_in_region(&region_name, block_entity)
+        match self.regions.get_mut(&self.default_region_name) {
+            Some(region) => {
+                region.add_block_entity(block_entity);
+                true
+            },
+            None => {
+                // Create region if it doesn't exist
+                let new_region = Region::new(self.default_region_name.clone(), block_entity.position, (1, 1, 1));
+                self.regions.insert(self.default_region_name.clone(), new_region);
+                // Now add the block entity
+                let region = self.regions.get_mut(&self.default_region_name).unwrap();
+                region.add_block_entity(block_entity);
+                true
+            }
+        }
+    }
+
+    pub fn add_block_entity_in_region(&mut self, region_name: &str, block_entity: BlockEntity) -> bool {
+        if region_name == self.default_region_name {
+            return self.add_block_entity(block_entity);
+        }
+
+        match self.regions.get_mut(region_name) {
+            Some(region) => {
+                region.add_block_entity(block_entity);
+                true
+            },
+            None => {
+                // Create region if it doesn't exist
+                let new_region = Region::new(region_name.to_string(), block_entity.position, (1, 1, 1));
+                self.regions.insert(region_name.to_string(), new_region);
+                // Now add the block entity
+                let region = self.regions.get_mut(region_name).unwrap();
+                region.add_block_entity(block_entity);
+                true
+            }
+        }
     }
 
     pub fn remove_block_entity(&mut self, position: (i32, i32, i32)) -> Option<BlockEntity> {
-        let region_name = self.default_region_name.clone();
-        self.remove_block_entity_in_region(&region_name, position)
+        // Only attempt if default region exists
+        self.regions.get_mut(&self.default_region_name)?.remove_block_entity(position)
+    }
+
+    pub fn remove_block_entity_in_region(&mut self, region_name: &str, position: (i32, i32, i32)) -> Option<BlockEntity> {
+        if region_name == self.default_region_name {
+            return self.remove_block_entity(position);
+        }
+
+        self.regions.get_mut(region_name)?.remove_block_entity(position)
+    }
+
+    // Optimized add_entity using the same pattern
+    pub fn add_entity(&mut self, entity: Entity) -> bool {
+        match self.regions.get_mut(&self.default_region_name) {
+            Some(region) => {
+                region.add_entity(entity);
+                true
+            },
+            None => {
+                // Create region if it doesn't exist
+                let rounded_pos = (
+                    entity.position.0.round() as i32,
+                    entity.position.1.round() as i32,
+                    entity.position.2.round() as i32
+                );
+                let new_region = Region::new(self.default_region_name.clone(), rounded_pos, (1, 1, 1));
+                self.regions.insert(self.default_region_name.clone(), new_region);
+                // Now add the entity
+                let region = self.regions.get_mut(&self.default_region_name).unwrap();
+                region.add_entity(entity);
+                true
+            }
+        }
     }
 
     pub fn add_entity_in_region(&mut self, region_name: &str, entity: Entity) -> bool {
-        let region = self.regions.entry(region_name.to_string()).or_insert_with(|| {
-            let rounded_position = (entity.position.0.round() as i32, entity.position.1.round() as i32, entity.position.2.round() as i32);
-            Region::new(region_name.to_string(), rounded_position, (1, 1, 1))
-        });
+        if region_name == self.default_region_name {
+            return self.add_entity(entity);
+        }
 
-        region.add_entity(entity);
-        true
-    }
-
-    pub fn remove_entity_in_region(&mut self, region_name: &str, index: usize) -> Option<Entity> {
-        self.regions.get_mut(region_name)?.remove_entity(index)
-    }
-
-    pub fn add_entity(&mut self, entity: Entity) -> bool {
-        let region_name = self.default_region_name.clone();
-        self.add_entity_in_region(&region_name, entity)
+        match self.regions.get_mut(region_name) {
+            Some(region) => {
+                region.add_entity(entity);
+                true
+            },
+            None => {
+                // Create region if it doesn't exist
+                let rounded_pos = (
+                    entity.position.0.round() as i32,
+                    entity.position.1.round() as i32,
+                    entity.position.2.round() as i32
+                );
+                let new_region = Region::new(region_name.to_string(), rounded_pos, (1, 1, 1));
+                self.regions.insert(region_name.to_string(), new_region);
+                // Now add the entity
+                let region = self.regions.get_mut(region_name).unwrap();
+                region.add_entity(entity);
+                true
+            }
+        }
     }
 
     pub fn remove_entity(&mut self, index: usize) -> Option<Entity> {
-        let region_name = self.default_region_name.clone();
-        self.remove_entity_in_region(&region_name, index)
+        // Only attempt if default region exists
+        self.regions.get_mut(&self.default_region_name)?.remove_entity(index)
+    }
+
+    pub fn remove_entity_in_region(&mut self, region_name: &str, index: usize) -> Option<Entity> {
+        if region_name == self.default_region_name {
+            return self.remove_entity(index);
+        }
+
+        self.regions.get_mut(region_name)?.remove_entity(index)
     }
 
     pub fn to_nbt(&self) -> NbtCompound {
@@ -348,7 +455,6 @@ impl UniversalSchematic {
             default_region_name,
         })
     }
-
 
     pub fn get_bounding_box(&self) -> BoundingBox {
         if self.regions.is_empty() {
@@ -399,7 +505,6 @@ impl UniversalSchematic {
 
         block_strings
     }
-
 
     pub fn copy_region(
         &mut self,
@@ -516,7 +621,6 @@ impl UniversalSchematic {
             })
             .collect()
     }
-
 
     pub fn iter_blocks(&self) -> impl Iterator<Item=(BlockPosition, &BlockState)> {
         self.regions.values().flat_map(|region| {
@@ -671,7 +775,6 @@ impl UniversalSchematic {
         Ok(true)
     }
 
-
     /// Parses a block string into its components (block state and optional NBT data)
     fn calculate_items_for_signal(signal_strength: u8) -> u32 {
         if signal_strength == 0 {
@@ -711,7 +814,7 @@ impl UniversalSchematic {
 
         items
     }
-    /// Parse a block string into its components, handling special signal strength case
+
     /// Parse a block string into its components, handling special signal strength case
     pub fn parse_block_string(block_string: &str) -> Result<(BlockState, Option<HashMap<String, NbtValue>>), String> {
         let mut parts = block_string.splitn(2, '{');
@@ -1370,32 +1473,32 @@ mod tests {
     #[test]
     fn test_get_block_palette_as_strings() {
         let mut schematic = UniversalSchematic::new("Test Palette".to_string());
-        
+
         // Add some blocks with different properties
         schematic.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
         schematic.set_block(1, 0, 0, BlockState::new("minecraft:dirt".to_string()));
-        
+
         let mut block_with_props = BlockState::new("minecraft:barrel".to_string());
         block_with_props.set_property("facing".to_string(), "up".to_string());
         block_with_props.set_property("open".to_string(), "false".to_string());
         schematic.set_block(2, 0, 0, block_with_props);
-        
+
         // Get the palette as strings
         let palette = schematic.get_block_palette_as_strings();
-        
+
         // Verify we have the correct number of entries (air is automatically added)
         assert_eq!(palette.len(), 4);
-        
+
         // Verify the strings are correctly formatted
         assert!(palette.contains(&"minecraft:stone".to_string()));
         assert!(palette.contains(&"minecraft:dirt".to_string()));
         assert!(palette.contains(&"minecraft:air".to_string()));
-        
+
         // The order of properties might vary, so we check if any entry contains the barrel with properties
         let has_barrel = palette.iter().any(|s| {
-            s.starts_with("minecraft:barrel[") && 
-            s.contains("facing=up") && 
-            s.contains("open=false")
+            s.starts_with("minecraft:barrel[") &&
+                s.contains("facing=up") &&
+                s.contains("open=false")
         });
         assert!(has_barrel, "Palette should contain barrel with correct properties");
     }

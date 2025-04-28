@@ -9,8 +9,6 @@ use serde::de::{Visitor, MapAccess};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-// We can't derive Hash and Serialize/Deserialize directly for the struct due to hashbrown::HashMap
-// and Arc<str>, so we'll implement them manually
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BlockState {
     pub name: Arc<str>,

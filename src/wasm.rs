@@ -12,8 +12,11 @@ use crate::{
     mchprs_world::MchprsWorld,
 };
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
 use mchprs_blocks::BlockPos;
 use crate::bounding_box::BoundingBox;
+use crate::chunk_iterator::ChunksIterator;
 use crate::mchprs_world::generate_truth_table;
 use crate::universal_schematic::ChunkLoadingStrategy;
 
@@ -34,6 +37,69 @@ pub struct MchprsWorldWrapper {
 #[wasm_bindgen]
 pub struct BlockStateWrapper(pub(crate) BlockState);
 
+#[wasm_bindgen(js_name = JsChunksIterator)]
+pub struct JsChunksIterator {
+    inner: ChunksIterator,
+}
+
+#[wasm_bindgen]
+impl JsChunksIterator {
+    #[wasm_bindgen(constructor)]
+    pub fn new(schematic_wrapper: &SchematicWrapper, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Self {
+        // Clone the schematic into an Rc to ensure it lives as long as the iterator
+        let schematic = Rc::new(schematic_wrapper.0.clone());
+
+        JsChunksIterator {
+            inner: ChunksIterator::new(schematic, chunk_width, chunk_height, chunk_length),
+        }
+    }
+
+    #[wasm_bindgen(js_name = next)]
+    pub fn next(&mut self) -> JsValue {
+        // Get the next chunk
+        if let Some((chunk_x, chunk_y, chunk_z, blocks)) = self.inner.next_chunk() {
+            // Create chunk object
+            let chunk_obj = js_sys::Object::new();
+            js_sys::Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk_x.into()).unwrap();
+            js_sys::Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk_y.into()).unwrap();
+            js_sys::Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk_z.into()).unwrap();
+
+            // Create blocks array
+            let blocks_array = js_sys::Array::new();
+
+            for (pos, block) in blocks {
+                let block_obj = js_sys::Object::new();
+                js_sys::Reflect::set(&block_obj, &"x".into(), &pos.x.into()).unwrap();
+                js_sys::Reflect::set(&block_obj, &"y".into(), &pos.y.into()).unwrap();
+                js_sys::Reflect::set(&block_obj, &"z".into(), &pos.z.into()).unwrap();
+                js_sys::Reflect::set(&block_obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
+
+                // Add properties
+                let properties = js_sys::Object::new();
+                for (key, value) in &block.properties {
+                    js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                }
+                js_sys::Reflect::set(&block_obj, &"properties".into(), &properties).unwrap();
+
+                blocks_array.push(&block_obj);
+            }
+
+            js_sys::Reflect::set(&chunk_obj, &"blocks".into(), &blocks_array).unwrap();
+
+            // Create iterator result object {value, done}
+            let result = js_sys::Object::new();
+            js_sys::Reflect::set(&result, &"value".into(), &chunk_obj).unwrap();
+            js_sys::Reflect::set(&result, &"done".into(), &JsValue::from_bool(false)).unwrap();
+
+            result.into()
+        } else {
+            // Return {done: true} when iteration is complete
+            let result = js_sys::Object::new();
+            js_sys::Reflect::set(&result, &"done".into(), &JsValue::from_bool(true)).unwrap();
+            result.into()
+        }
+    }
+}
 // All your existing WASM implementations go here...
 #[wasm_bindgen]
 impl SchematicWrapper {
@@ -176,10 +242,11 @@ impl SchematicWrapper {
             }
         }
 
-        // Create BlockState with properties
         let block_state = BlockState {
-            name: block_name.to_string(),
-            properties: props,
+            name: Arc::from(block_name),
+            properties: props.into_iter()
+                .map(|(k, v)| (Arc::from(k.as_str()), Arc::from(v.as_str())))
+                .collect(),
         };
 
         // Set the block in the schematic
@@ -190,7 +257,7 @@ impl SchematicWrapper {
 
 
     pub fn get_block(&self, x: i32, y: i32, z: i32) -> Option<String> {
-        self.0.get_block(x, y, z).map(|block_state| block_state.name.clone())
+        self.0.get_block(x, y, z).map(|block_state| block_state.name.to_string())
     }
 
     pub fn get_block_with_properties(&self, x: i32, y: i32, z: i32) -> Option<BlockStateWrapper> {
@@ -292,37 +359,39 @@ impl SchematicWrapper {
             .collect::<Array>()
     }
 
-    pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Array {
-        self.0.iter_chunks(chunk_width, chunk_height, chunk_length, None)
-            .map(|chunk| {
-                let chunk_obj = js_sys::Object::new();
-                js_sys::Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();
-                js_sys::Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk.chunk_y.into()).unwrap();
-                js_sys::Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk.chunk_z.into()).unwrap();
+    #[wasm_bindgen]
+    pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> JsValue {
+        // 1. plain JS object that will act as the iterable
+        let js_iterable = js_sys::Object::new();
 
-                let blocks_array = chunk.positions.into_iter()
-                    .map(|pos| {
-                        let block = self.0.get_block(pos.x, pos.y, pos.z).unwrap();
-                        let obj = js_sys::Object::new();
-                        js_sys::Reflect::set(&obj, &"x".into(), &pos.x.into()).unwrap();
-                        js_sys::Reflect::set(&obj, &"y".into(), &pos.y.into()).unwrap();
-                        js_sys::Reflect::set(&obj, &"z".into(), &pos.z.into()).unwrap();
-                        js_sys::Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block.name)).unwrap();
-                        let properties = js_sys::Object::new();
-                        for (key, value) in &block.properties {
-                            js_sys::Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
-                        }
-                        js_sys::Reflect::set(&obj, &"properties".into(), &properties).unwrap();
-                        obj
-                    })
-                    .collect::<Array>();
+        // 2. Rust-backed iterator, converted into a real JS object
+        let iterator = JsChunksIterator::new(self, chunk_width, chunk_height, chunk_length);
+        js_sys::Reflect::set(
+            &js_iterable,
+            &JsValue::from_str("_iterator"),
+            &iterator.into(),                   // <-- fix
+        ).unwrap();
 
-                js_sys::Reflect::set(&chunk_obj, &"blocks".into(), &blocks_array).unwrap();
-                chunk_obj
-            })
-            .collect::<Array>()
+        // 3. make the object itself iterable
+        let symbol_iterator_fn = js_sys::Function::new_no_args(r#"return this._iterator;"#);
+        js_sys::Reflect::set(
+            &js_iterable,
+            &js_sys::Symbol::iterator().into(),
+            &symbol_iterator_fn.into(),
+        ).unwrap();
+
+        // 4. optional helper that gathers everything into an array
+        let to_array_fn = js_sys::Function::new_no_args(
+            r#"
+        const out = [];
+        for (const chunk of this) out.push(chunk);
+        return out;
+        "#
+        );
+        js_sys::Reflect::set(&js_iterable, &JsValue::from_str("toArray"), &to_array_fn.into()).unwrap();
+
+        js_iterable.into()
     }
-
 
     pub fn chunks_with_strategy(
         &self,
@@ -486,19 +555,18 @@ impl BlockStateWrapper {
     }
 
     pub fn with_property(&mut self, key: &str, value: &str) {
-        self.0 = self.0.clone().with_property(key.to_string(), value.to_string());
+        self.0 = self.0.clone().with_prop(key, value);
     }
 
     pub fn name(&self) -> String {
-        self.0.name.clone()
+        self.0.name.clone().to_string()
     }
 
     pub fn properties(&self) -> JsValue {
         let properties = self.0.properties.clone();
         let js_properties = js_sys::Object::new();
         for (key, value) in properties {
-            js_sys::Reflect::set(&js_properties, &key.into(), &value.into()).unwrap();
-        }
+            js_sys::Reflect::set(&js_properties, &JsValue::from_str(&key.to_string()), &JsValue::from_str(&value.to_string())).unwrap();        }
         js_properties.into()
     }
 }

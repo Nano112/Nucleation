@@ -8,7 +8,7 @@ mod entity;
 pub mod block_entity;
 mod formats;
 mod print_utils;
-mod bounding_box;
+pub mod bounding_box;
 mod metadata;
 mod mchprs_world;
 mod block_position;
@@ -16,11 +16,14 @@ pub mod utils;
 mod item;
 mod chunk;
 
+
 // Feature-specific modules
 #[cfg(feature = "wasm")]
 mod wasm;
 #[cfg(feature = "ffi")]
 pub mod ffi;
+mod string_interner;
+mod chunk_iterator;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;

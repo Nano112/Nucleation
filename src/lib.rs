@@ -24,6 +24,7 @@ pub mod ffi;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;
+pub use universal_schematic::ChunkLoadingStrategy;
 pub use block_state::BlockState;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic, format_json_schematic};

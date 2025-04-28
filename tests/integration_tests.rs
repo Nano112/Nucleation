@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use minecraft_schematic_utils::{BlockState, litematic, schematic, UniversalSchematic};
 
 #[test]
@@ -205,6 +206,39 @@ fn test_expand_schematic() {
 
     // Assert expected dimensions
     assert_eq!(schematic.get_dimensions(), (5, 5, 5));
+}
+
+
+// test to create a 200x200x200 schematic
+#[test]
+fn test_create_large_schematic() {
+    // Create a new empty schematic
+    let mut schematic = UniversalSchematic::new("Default".to_string());
+    let start = Instant::now();
+    
+    // Set blocks in a 200x200x200 cube
+    for x in 0..1000 {
+        for y in 0..1000 {
+            for z in 0..1000 {
+                schematic.set_block(x, y, z, BlockState::new("minecraft:stone".to_string()));
+            }
+        }
+    }
+    let duration = start.elapsed();
+    println!("Time taken to create large schematic: {:?}", duration);
+
+    // Print dimensions
+    println!("Dimensions: {:?}", schematic.get_dimensions());
+
+    //convert to a .schem
+    let schem_data = schematic.to_schematic().expect("Failed to convert to schematic");
+    let output_path = format!("tests/output/large_schematic.schem");
+    let schem_path = std::path::Path::new(&output_path);
+    std::fs::write(schem_path, &schem_data).expect("Failed to write schematic file");
+    println!("Schematic saved to {}", output_path);
+
+    // Assert expected dimensions
+    assert_eq!(schematic.get_dimensions(), (1000, 1000, 1000));
 }
 
 

@@ -22,7 +22,7 @@ wasm = [
 
 [dependencies]
 # Core dependencies that are always needed
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 quartz_nbt = "0.2.9"
@@ -38,24 +38,27 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hematite-nbt = "*"
 tracing = "0.1.40"
 thiserror = "1.0.63"
+rand = { version = "0.6", features = ["wasm-bindgen"] }
 
 # WASM-specific dependencies, only included when the "wasm" feature is enabled
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
 js-sys = { version = "0.3.70", optional = true }
 serde-wasm-bindgen = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["console"] }
-rand = "0.9.1"
+clap = { version = "4.5.17", features = ["derive"] }
+hashbrown = { version = "0.14", features = ["ahash"] }
+once_cell = "1.19.0"
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
-criterion = "0.5.1"
+criterion = { version = "0.5", features = ["cargo_bench_support"] }
 num-complex = "0.4"
 
 [[bench]]
-name = "schematic_bench"
+name = "custom_bench"
 harness = false
 
 [profile.bench]

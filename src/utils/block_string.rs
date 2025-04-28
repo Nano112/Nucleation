@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::sync::Arc;
+use hashbrown::HashMap;
 use serde_json::Value;
 use crate::BlockState;
 use crate::utils::{NbtValue, NbtMap};
@@ -16,18 +17,24 @@ pub fn parse_block_string(block_string: &str) -> Result<(BlockState, Option<NbtM
             .ok_or("Missing properties closing bracket")?
             .trim_end_matches(']');
 
-        let mut properties = HashMap::new();
+        let mut properties: HashMap<Arc<str>, Arc<str>> = HashMap::new();
+
         for prop in properties_str.split(',') {
-            let mut kv = prop.split('=');
-            let key = kv.next().ok_or("Missing property key")?.trim();
-            let value = kv.next().ok_or("Missing property value")?.trim()
-                .trim_matches(|c| c == '\'' || c == '"');
-            properties.insert(key.to_string(), value.to_string());
+            let (k, v) = prop
+                .split_once('=')
+                .ok_or("property must be key=value")?;
+            let v = v.trim().trim_matches(|c| c == '\'' || c == '"');
+
+            properties.insert(Arc::<str>::from(k.trim()), Arc::<str>::from(v));
         }
 
-        BlockState::new(block_name.to_string()).with_properties(properties)
+        let block_state = BlockState::new(block_name)
+            .with_properties(properties);   // <- type matches the builder
+        block_state
+
     } else {
-        BlockState::new(block_state_str.to_string())
+        let block_name = block_state_str.trim();
+        BlockState::new(block_name)
     };
 
     // Parse NBT data if present
@@ -216,6 +223,7 @@ fn extract_balanced_substring(s: &str, open: char, close: char) -> Option<&str> 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use super::*;
 
     #[test]
@@ -224,8 +232,8 @@ mod tests {
         let (block_state, nbt_data) = parse_block_string(block_str).unwrap();
 
         // Check block state
-        assert_eq!(block_state.get_name(), "minecraft:barrel");
-        assert_eq!(block_state.get_property("facing"), Some(&"up".to_string()));
+        assert_eq!(block_state.get_name().as_ref(), "minecraft:barrel");
+        assert_eq!(block_state.get_property("facing"), Some(&Arc::from("up")));
 
         // Check NBT data
         let nbt_data = nbt_data.expect("NBT data should be present");

@@ -34,20 +34,46 @@ pub fn format_palette(palette: &Vec<BlockState>) -> String {
     output
 }
 
+use std::fmt::Write;          // gives us writeln!
+
 pub fn format_region(name: &str, region: &Region) -> String {
-    let mut output = String::new();
-    output.push_str(&format!("  Region: {}\n", name));
-    output.push_str(&format!("    Position: {:?}\n", region.position));
-    output.push_str(&format!("    Size: {:?}\n", region.size));
-    output.push_str("    Blocks:\n");
-    for i in 0..region.blocks.len() {
-        let block_palette_index = region.blocks[i];
-        let block_position = region.index_to_coords(i);
-        let block_state = region.palette.get(block_palette_index as usize).unwrap();
-        output.push_str(&format!("      {} @ {:?}: {:?}\n", block_palette_index, block_position, block_state));
+    const SUB: i32 = 16;      // same constant Region uses
+    let mut out = String::new();
+
+    writeln!(out, "  Region: {}", name).unwrap();
+    writeln!(out, "    Position: {:?}", region.position).unwrap();
+    writeln!(out, "    Size: {:?}", region.size).unwrap();
+    writeln!(out, "    Blocks:").unwrap();
+
+    for (&(cx, cy, cz), chunk) in &region.chunks {
+        for local_idx in 0..chunk.len() {
+            let palette_index = chunk[local_idx];
+            if palette_index == 0 {
+                continue; // air
+            }
+
+            // decode local_idx → local (x,y,z)
+            let lx =  local_idx % SUB as usize;
+            let ly =  local_idx / (SUB as usize * SUB as usize);
+            let lz = (local_idx / SUB as usize) % SUB as usize;
+
+            // chunk coords → world coords
+            let x = cx * SUB + lx as i32;
+            let y = cy * SUB + ly as i32;
+            let z = cz * SUB + lz as i32;
+
+            let block_state = &region.palette[palette_index as usize];
+            writeln!(
+                out,
+                "      {} @ ({}, {}, {}): {:?}",
+                palette_index, x, y, z, block_state
+            ).unwrap();
+        }
     }
-    output
+
+    out
 }
+
 
 pub fn format_metadata(metadata: &Metadata) -> String {
     let mut output = String::from("Metadata:\n");

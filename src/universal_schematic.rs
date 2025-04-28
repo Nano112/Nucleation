@@ -20,13 +20,14 @@ pub struct UniversalSchematic {
     pub default_region_name: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChunkLoadingStrategy {
     Default,
-    DistanceToCamera(f32, f32, f32), // Camera position
+    DistanceToCamera(f32, f32, f32),
     TopDown,
     BottomUp,
     CenterOutward,
-    Random
+    Random,
 }
 pub type SimpleBlockMapping = (&'static str, Vec<(&'static str, &'static str)>);
 
@@ -88,8 +89,14 @@ impl UniversalSchematic {
 
     fn convert_to_full_mappings(simple_mappings: &[(&'static char, SimpleBlockMapping)]) -> HashMap<char, BlockState> {
         simple_mappings.iter().map(|(&c, (name, props))| {
-            let block_state = BlockState::new(format!("minecraft:{}", name))
-                .with_properties(props.iter().map(|&(k, v)| (k.to_string(), v.to_string())).collect());
+            // Start with a basic block state
+            let mut block_state = BlockState::new(format!("minecraft:{}", name));
+
+            // Add each property individually as Arc<str>
+            for &(k, v) in props.iter() {
+                block_state = block_state.with_prop(k, v);
+            }
+
             (c, block_state)
         }).collect()
     }
@@ -145,8 +152,16 @@ impl UniversalSchematic {
         let mut blocks: Vec<BlockState> = Vec::new();
         for region in self.regions.values() {
             let region_palette = region.get_palette();
-            for block_index in &region.blocks {
-                blocks.push(region_palette[*block_index as usize].clone());
+
+            // Use the bounding box to iterate through all coordinates in the region
+            let bounding_box = region.get_bounding_box();
+            for (x, y, z) in bounding_box.iter_coords() {
+                if let Some(block_index) = region.get_block_index(x, y, z) {
+                    // Only include non-air blocks (index 0 is air)
+                    if block_index > 0 {
+                        blocks.push(region_palette[block_index].clone());
+                    }
+                }
             }
         }
         blocks
@@ -368,6 +383,23 @@ impl UniversalSchematic {
         block_counts
     }
 
+    pub fn get_block_palette_as_strings(&self) -> Vec<String> {
+        let mut block_strings = Vec::new();
+        let mut unique_blocks = std::collections::HashSet::new();
+
+        for region in self.regions.values() {
+            for block in &region.palette {
+                // Use the Display implementation to convert BlockState to string
+                let block_string = block.to_string();
+                if unique_blocks.insert(block_string.clone()) {
+                    block_strings.push(block_string);
+                }
+            }
+        }
+
+        block_strings
+    }
+
 
     pub fn copy_region(
         &mut self,
@@ -488,12 +520,21 @@ impl UniversalSchematic {
 
     pub fn iter_blocks(&self) -> impl Iterator<Item=(BlockPosition, &BlockState)> {
         self.regions.values().flat_map(|region| {
-            region.blocks.iter().enumerate().filter_map(move |(index, block_index)| {
-                let (x, y, z) = region.index_to_coords(index);
-                Some((
-                    BlockPosition { x, y, z },
-                    &region.palette[*block_index as usize]
-                ))
+            // Get the region's bounding box
+            let bounding_box = region.get_bounding_box();
+
+            // Create an iterator that produces all non-air blocks in the region
+            bounding_box.iter_coords().filter_map(move |(x, y, z)| {
+                // Only yield blocks that aren't air (index > 0)
+                match region.get_block_index(x, y, z) {
+                    Some(block_index) if block_index > 0 => {
+                        Some((
+                            BlockPosition { x, y, z },
+                            &region.palette[block_index]
+                        ))
+                    },
+                    _ => None
+                }
             })
         })
     }
@@ -615,7 +656,7 @@ impl UniversalSchematic {
         // If we have NBT data, create and set the block entity
         if let Some(nbt_data) = nbt_data {
             let mut block_entity = BlockEntity::new(
-                block_state.name.clone(),
+                block_state.name.to_string(), // Convert Arc<str> to String
                 (x, y, z),
             );
 
@@ -629,6 +670,7 @@ impl UniversalSchematic {
 
         Ok(true)
     }
+
 
     /// Parses a block string into its components (block state and optional NBT data)
     fn calculate_items_for_signal(signal_strength: u8) -> u32 {
@@ -670,6 +712,7 @@ impl UniversalSchematic {
         items
     }
     /// Parse a block string into its components, handling special signal strength case
+    /// Parse a block string into its components, handling special signal strength case
     pub fn parse_block_string(block_string: &str) -> Result<(BlockState, Option<HashMap<String, NbtValue>>), String> {
         let mut parts = block_string.splitn(2, '{');
         let block_state_str = parts.next().unwrap().trim();
@@ -683,18 +726,23 @@ impl UniversalSchematic {
                 .ok_or("Missing properties closing bracket")?
                 .trim_end_matches(']');
 
-            let mut properties = HashMap::new();
+            // Create a base BlockState with the name
+            let mut block_state = BlockState::new(block_name);
+
+            // Add each property individually
             for prop in properties_str.split(',') {
                 let mut kv = prop.split('=');
                 let key = kv.next().ok_or("Missing property key")?.trim();
                 let value = kv.next().ok_or("Missing property value")?.trim()
                     .trim_matches(|c| c == '\'' || c == '"');
-                properties.insert(key.to_string(), value.to_string());
+
+                // Use with_prop which accepts anything that can be converted to Arc<str>
+                block_state = block_state.with_prop(key, value);
             }
 
-            BlockState::new(block_name.to_string()).with_properties(properties)
+            block_state
         } else {
-            BlockState::new(block_state_str.to_string())
+            BlockState::new(block_state_str)
         };
 
         // Parse NBT data if present
@@ -702,7 +750,7 @@ impl UniversalSchematic {
             let mut nbt_map = HashMap::new();
 
             // Check for signal strength specification
-            if block_state.get_name() == "minecraft:barrel" && nbt_str.contains("signal=") {
+            if block_state.name.as_ref() == "minecraft:barrel" && nbt_str.contains("signal=") {
                 if let Some(signal_str) = nbt_str.split('=').nth(1) {
                     let signal_strength: u8 = signal_str.trim().parse()
                         .map_err(|_| "Invalid signal strength value")?;
@@ -940,9 +988,9 @@ mod tests {
         let mut source = UniversalSchematic::new("Source".to_string());
 
         // Add some blocks in a pattern
-        source.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
-        source.set_block(1, 1, 1, BlockState::new("minecraft:dirt".to_string()));
-        source.set_block(2, 2, 2, BlockState::new("minecraft:diamond_block".to_string()));
+        source.set_block(0, 0, 0, BlockState::new("minecraft:stone"));
+        source.set_block(1, 1, 1, BlockState::new("minecraft:dirt"));
+        source.set_block(2, 2, 2, BlockState::new("minecraft:diamond_block"));
 
         // Add a block entity
         let chest = BlockEntity::create_chest((1, 1, 1), vec![
@@ -963,9 +1011,9 @@ mod tests {
         // Copy to new position
         assert!(target.copy_region(&source, &bounds, (10, 10, 10), &[]).is_ok());
 
-        // Verify copied blocks
-        assert_eq!(target.get_block(10, 10, 10).unwrap().get_name(), "minecraft:stone");
-        assert_eq!(target.get_block(11, 11, 11).unwrap().get_name(), "minecraft:dirt");
+        // Verify copied blocks - use as_ref() to compare Arc<str> with string literals
+        assert_eq!(target.get_block(10, 10, 10).unwrap().name.as_ref(), "minecraft:stone");
+        assert_eq!(target.get_block(11, 11, 11).unwrap().name.as_ref(), "minecraft:dirt");
 
         // Block at (2, 2, 2) should not have been copied as it's outside bounds
         assert!(target.get_block(12, 12, 12).is_none());
@@ -988,10 +1036,10 @@ mod tests {
         let mut source = UniversalSchematic::new("Source".to_string());
 
         // Add blocks in a pattern including blocks we'll want to exclude
-        let stone = BlockState::new("minecraft:stone".to_string());
-        let dirt = BlockState::new("minecraft:dirt".to_string());
-        let diamond = BlockState::new("minecraft:diamond_block".to_string());
-        let air = BlockState::new("minecraft:air".to_string());
+        let stone = BlockState::new("minecraft:stone");
+        let dirt = BlockState::new("minecraft:dirt");
+        let diamond = BlockState::new("minecraft:diamond_block");
+        let air = BlockState::new("minecraft:air");
 
         // Create a 2x2x2 cube with different blocks
         source.set_block(0, 0, 0, stone.clone());
@@ -1013,8 +1061,15 @@ mod tests {
 
         // Test some specific positions
         // Where dirt blocks were in source (should be copied)
-        assert_eq!(target.get_block(10, 11, 10), Some(&dirt), "Dirt block should be copied at (10, 11, 10)");
-        assert_eq!(target.get_block(11, 11, 10), Some(&dirt), "Dirt block should be copied at (11, 11, 10)");
+        // Use PartialEq for BlockState which we've implemented correctly
+        assert!(
+            target.get_block(10, 11, 10).map_or(false, |b| b == &dirt),
+            "Dirt block should be copied at (10, 11, 10)"
+        );
+        assert!(
+            target.get_block(11, 11, 10).map_or(false, |b| b == &dirt),
+            "Dirt block should be copied at (11, 11, 10)"
+        );
 
         // check that excluded blocks were not copied
         assert_eq!(target.get_block(10, 10, 10), None, "Stone block should not be copied at (10, 10, 10)");
@@ -1137,9 +1192,9 @@ mod tests {
         assert!(schematic.set_block_from_string(2, 0, 0, barrel_str).unwrap());
 
         // Verify the blocks were set correctly
-        assert_eq!(schematic.get_block(0, 0, 0).unwrap().get_name(), "minecraft:stone");
-        assert_eq!(schematic.get_block(1, 0, 0).unwrap().get_name(), "minecraft:chest");
-        assert_eq!(schematic.get_block(2, 0, 0).unwrap().get_name(), "minecraft:barrel");
+        assert_eq!(schematic.get_block(0, 0, 0).unwrap().name.as_ref(), "minecraft:stone");
+        assert_eq!(schematic.get_block(1, 0, 0).unwrap().name.as_ref(), "minecraft:chest");
+        assert_eq!(schematic.get_block(2, 0, 0).unwrap().name.as_ref(), "minecraft:barrel");
 
         // Verify container contents
         let barrel_entity = schematic.get_block_entity(BlockPosition { x: 2, y: 0, z: 0 }).unwrap();
@@ -1292,7 +1347,8 @@ mod tests {
 
         // Verify the block state properties
         let block = schematic.get_block(0, 0, 0).unwrap();
-        assert_eq!(block.get_property("facing"), Some(&"up".to_string()));
+        // Since get_property now returns Option<&Arc<str>>, we need to use as_ref() for comparison
+        assert_eq!(block.get_property("facing").map(|s| s.as_ref()), Some("up"));
 
         // Verify the signal strength items
         let barrel_entity = schematic.get_block_entity(BlockPosition { x: 0, y: 0, z: 0 }).unwrap();
@@ -1309,5 +1365,38 @@ mod tests {
             let expected_items = UniversalSchematic::calculate_items_for_signal(7);
             assert_eq!(total_items as u32, expected_items);
         }
+    }
+
+    #[test]
+    fn test_get_block_palette_as_strings() {
+        let mut schematic = UniversalSchematic::new("Test Palette".to_string());
+        
+        // Add some blocks with different properties
+        schematic.set_block(0, 0, 0, BlockState::new("minecraft:stone".to_string()));
+        schematic.set_block(1, 0, 0, BlockState::new("minecraft:dirt".to_string()));
+        
+        let mut block_with_props = BlockState::new("minecraft:barrel".to_string());
+        block_with_props.set_property("facing".to_string(), "up".to_string());
+        block_with_props.set_property("open".to_string(), "false".to_string());
+        schematic.set_block(2, 0, 0, block_with_props);
+        
+        // Get the palette as strings
+        let palette = schematic.get_block_palette_as_strings();
+        
+        // Verify we have the correct number of entries (air is automatically added)
+        assert_eq!(palette.len(), 4);
+        
+        // Verify the strings are correctly formatted
+        assert!(palette.contains(&"minecraft:stone".to_string()));
+        assert!(palette.contains(&"minecraft:dirt".to_string()));
+        assert!(palette.contains(&"minecraft:air".to_string()));
+        
+        // The order of properties might vary, so we check if any entry contains the barrel with properties
+        let has_barrel = palette.iter().any(|s| {
+            s.starts_with("minecraft:barrel[") && 
+            s.contains("facing=up") && 
+            s.contains("open=false")
+        });
+        assert!(has_barrel, "Palette should contain barrel with correct properties");
     }
 }

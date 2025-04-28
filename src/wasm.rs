@@ -323,6 +323,7 @@ impl SchematicWrapper {
             .collect::<Array>()
     }
 
+
     pub fn chunks_with_strategy(
         &self,
         chunk_width: i32,
@@ -374,7 +375,7 @@ impl SchematicWrapper {
             .collect::<Array>()
     }
 
-    
+
     pub fn get_chunk_blocks(&self, offset_x: i32, offset_y: i32, offset_z: i32, width: i32, height: i32, length: i32) -> js_sys::Array {
         let blocks = self.0.iter_blocks()
             .filter(|(pos, _)| {
@@ -398,6 +399,17 @@ impl SchematicWrapper {
             .collect::<js_sys::Array>();
 
         blocks
+    }
+
+    pub fn get_block_palette(&self) -> js_sys::Array {
+        let palette_strings = self.0.get_block_palette_as_strings();
+        let js_array = js_sys::Array::new();
+        
+        for block_string in palette_strings {
+            js_array.push(&JsValue::from_str(&block_string));
+        }
+        
+        js_array
     }
 
 

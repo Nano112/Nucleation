@@ -73,20 +73,24 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
     root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
 
-
     let offset = vec![0, 0, 0];
     root.insert("Offset", NbtTag::IntArray(offset));
 
-
     let merged_region = schematic.get_merged_region();
-    
-    root.insert("Palette", convert_palette(&merged_region.palette).0);
-    root.insert("PaletteMax", convert_palette(&merged_region.palette).1 + 1);
 
-    let block_data: Vec<u8> = merged_region.blocks.iter()
-        .flat_map(|&block_id| encode_varint(block_id as u32))
+    let (palette_nbt, palette_max) = convert_palette(&merged_region.palette);
+    root.insert("Palette", palette_nbt);
+    root.insert("PaletteMax", palette_max + 1);
+
+    // Generate block data from our sparse storage
+    let bounding_box = merged_region.get_bounding_box();
+    let block_data: Vec<u8> = bounding_box.iter_coords()
+        .map(|(x, y, z)| {
+            // Get the block index at this position
+            merged_region.get_block_index(x, y, z).unwrap_or(0) as u32
+        })
+        .flat_map(encode_varint)
         .collect();
-
 
     //attempt to decode the block data for debug since it's buggy
     let mut reader = Cursor::new(block_data.clone());
@@ -114,7 +118,6 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
     root.insert("Metadata", schematic.metadata.to_nbt());
 
-
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
@@ -122,10 +125,9 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
 
 
-
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {
-    let reader   = BufReader::with_capacity(1 << 20, data);   // 1 MiB buf
-    let mut gz   = GzDecoder::new(reader);
+    let reader = BufReader::with_capacity(1 << 20, data);   // 1 MiB buf
+    let mut gz = GzDecoder::new(reader);
     let (root, _) = read_nbt(&mut gz, Flavor::Uncompressed)?;
 
     let schem = root.get::<_, &NbtCompound>("Schematic").unwrap_or(&root);
@@ -146,22 +148,42 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     let height = schem.get::<_, i16>("Height")? as u32;
     let length = schem.get::<_, i16>("Length")? as u32;
 
-    let block_container=
-    if schem_version == 2 {
-        schem
-    } else {
-        schem.get::<_, &NbtCompound>("Blocks")?
-    };
+    let block_container =
+        if schem_version == 2 {
+            schem
+        } else {
+            schem.get::<_, &NbtCompound>("Blocks")?
+        };
 
     let block_palette = parse_block_palette(&block_container)?;
-
     let block_data = parse_block_data(&block_container, width, height, length)?;
 
-
     let mut region = Region::new("Main".to_string(), (0, 0, 0), (width as i32, height as i32, length as i32));
+
+    // Set up palette
     region.palette = block_palette;
 
-    region.blocks = block_data.iter().map(|&x| x as usize).collect();
+    // Rebuild the palette lookup
+    for (idx, block) in region.palette.iter().enumerate() {
+        region.palette_lookup.insert(block.clone(), idx as u16);
+    }
+
+    // Now set blocks using our sparse storage model
+    let size = (width as i32, height as i32, length as i32);
+    for x in 0..size.0 {
+        for y in 0..size.1 {
+            for z in 0..size.2 {
+                let idx = ((y * size.0 * size.2) + (z * size.0) + x) as usize;
+                if idx < block_data.len() {
+                    let block_idx = block_data[idx];
+                    // Only set non-air blocks (index 0 is air)
+                    if block_idx > 0 {
+                        region.set_block_at_index(x, y, z, block_idx as u16);
+                    }
+                }
+            }
+        }
+    }
 
     let block_entities = parse_block_entities(&block_container)?;
     for block_entity in block_entities {
@@ -176,7 +198,6 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
     schematic.add_region(region);
     Ok(schematic)
 }
-
 
 
 fn convert_block_entities(region: &Region) -> NbtList {
@@ -216,56 +237,58 @@ fn parse_block_palette(region_tag: &NbtCompound) -> Result<Vec<BlockState>, Box<
 }
 
 fn parse_block_state(input: &str) -> BlockState {
-    if let Some((name, properties_str)) = input.split_once('[') {
-        let name = name.to_string();
-        let properties = properties_str
+    if let Some((name, props_str)) = input.split_once('[') {
+        let mut bs = BlockState::new(name);
+
+        for prop in props_str
             .trim_end_matches(']')
             .split(',')
-            .filter_map(|prop| {
-                let mut parts = prop.splitn(2, '=');
-                Some((
-                    parts.next()?.trim().to_string(),
-                    parts.next()?.trim().to_string(),
-                ))
-            })
-            .collect();
-        BlockState { name, properties }
+            .filter(|s| !s.is_empty())
+        {
+            if let Some((k, v)) = prop.split_once('=') {
+                bs.add_prop(k.trim(), v.trim());
+            }
+        }
+        bs
     } else {
-        BlockState::new(input.to_string())
+        BlockState::new(input)
     }
 }
 
-fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
+
+fn convert_palette(palette: &[BlockState]) -> (NbtCompound, i32) {
     let mut nbt_palette = NbtCompound::new();
-    let mut max_id = 0;
-    
-    // Always ensure air is at index 0
     nbt_palette.insert("minecraft:air", NbtTag::Int(0));
-    
-    let mut next_id = 1; // Start at 1 since air is at 0
-    
-    for (id, block_state) in palette.iter().enumerate() {
-        if block_state.name == "minecraft:air" {
-            continue; // Skip air blocks as we already added it at index 0
+
+    let mut max_id = 0;
+    let mut next_id = 1;
+
+    for block_state in palette {
+        if block_state.name.as_ref() == "minecraft:air" {
+            continue; // air is already index 0
         }
-        
-        let key = if block_state.properties.is_empty() {
-            block_state.name.clone()
+
+        let key: String = if block_state.properties.is_empty() {
+            // Arc<str> -> &str -> String
+            block_state.name.as_ref().to_owned()
         } else {
-            format!("{}[{}]", block_state.name,
-                    block_state.properties.iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(","))
+            let props = block_state
+                .properties
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("{}[{}]", block_state.name, props)
         };
-        
+
         nbt_palette.insert(&key, NbtTag::Int(next_id));
         max_id = max_id.max(next_id);
         next_id += 1;
     }
 
-    (nbt_palette, max_id as i32)
+    (nbt_palette, max_id)
 }
+
 
 pub fn encode_varint(value: u32) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -485,12 +508,9 @@ mod tests {
     #[test]
     fn test_convert_palette() {
         let palette = vec![
-            BlockState::new("minecraft:stone".to_string()),
-            BlockState::new("minecraft:dirt".to_string()),
-            BlockState {
-                name: "minecraft:wool".to_string(),
-                properties: [("color".to_string(), "red".to_string())].into_iter().collect(),
-            },
+            BlockState::new("minecraft:stone"),
+            BlockState::new("minecraft:dirt"),
+            BlockState::new("minecraft:wool").with_prop("color", "red"),
         ];
 
         let (nbt_palette, max_id) = convert_palette(&palette);

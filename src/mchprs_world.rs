@@ -145,8 +145,9 @@ impl MchprsWorld {
             if let Some(mut block) = Block::from_name(&name) {
                 let properties_ref: HashMap<&str, &str> = properties
                     .iter()
-                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .map(|(k, v)| (k.as_ref(), v.as_ref()))   // <- here
                     .collect();
+
 
                 block.set_properties(properties_ref);
                 self.set_block_raw(pos, block.get_id());
@@ -250,11 +251,15 @@ impl MchprsWorld {
     }
 
     pub fn get_lever_power(&self, pos: BlockPos) -> bool {
+        println!("{:?}", self.get_block(pos));
+        println!("{:?}", self.get_block(pos).properties());
+
         self.get_block(pos)
             .properties()
             .get("powered")
             .map(|v| v == "true")
             .unwrap_or(false)
+
     }
 
     pub fn get_compiled_world(&mut self) -> Compiler {
@@ -412,31 +417,25 @@ mod tests {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
 
         for x in 1..15 {
-            schematic.set_block(x, 1, 0, BlockState::new("minecraft:redstone_wire".to_string())
-                .with_properties([
-                    ("power", "0"),
+
+            schematic.set_block(x, 1, 0, BlockState::new("minecraft:redstone_wire")
+                .with_str_props(&[("power", "0"),
                     ("east", if x < 15 { "side" } else { "none" }),
                     ("west", "side"),
                     ("north", "none"),
-                    ("south", "none")
-                ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect()
-                ));
+                    ("south", "none")]));
         }
         for x in 0..16 {
             schematic.set_block(x, 0, 0, BlockState::new("minecraft:gray_concrete".to_string()));
         }
-        schematic.set_block(0, 1, 0, BlockState::new("minecraft:lever".to_string())
-            .with_properties([
-                ("facing", "east"),
+
+        schematic.set_block(0, 1, 0, BlockState::new("minecraft:lever")
+            .with_str_props(&[("facing", "east"),
                 ("powered", "true"),
-                ("face", "floor")
-            ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect()
-            ));
-        schematic.set_block(15, 1, 0, BlockState::new("minecraft:redstone_lamp".to_string())
-            .with_properties([
-                ("lit", "false")
-            ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect()
-            ));
+                ("face", "floor")]));
+
+        schematic.set_block(15, 1, 0, BlockState::new("minecraft:redstone_lamp")
+            .with_str_props(&[("lit", "false")]));
 
         let schematic_file = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
 
@@ -450,17 +449,52 @@ mod tests {
         let schem_path = Path::new(&input_path_str);
         let schem_data = fs::read(schem_path).expect(format!("Failed to read {}", input_path_str).as_str());
         let mut schematic = schematic::from_schematic(&schem_data).expect("Failed to parse schem");
-        let redstone_lamp_block = BlockState::new("minecraft:redstone_lamp".to_string())
-            .with_properties([
-                ("lit", "false")
-            ].iter().cloned().map(|(a, b)| (a.to_string(), b.to_string())).collect());
-        schematic.set_block(1, 0, 3, redstone_lamp_block.clone());
+        
+        println!("{:?}", schematic.get_bounding_box());
+        println!("{:?}", schematic.get_dimensions());
+        
+        println!("{:?}", schematic.get_block_palette_as_strings());
+
+        println!("{:?}", schematic.get_block(0, 0, 0));
+        println!("{:?}", schematic.get_block(2, 0, 0));
+        
+
+        schematic.set_block(1, 0, 3, BlockState::new("minecraft:redstone_lamp")
+            .with_str_props(&[("lit", "false")]));
 
         // save the schematic
         let schematic_file = schematic::to_schematic(&schematic).expect("Failed to convert to schem");
         let output_path = "tests/output/compiled_and_gate.schem";
         std::fs::write(output_path, &schematic_file).expect("Failed to write schematic file");
         schematic
+    }
+
+    #[test]
+    fn test_simple_and_gate() {
+        let schematic = get_sample_and_gate_schematic();
+        let mut world = MchprsWorld::new(schematic).unwrap();
+
+        let lever_a_pos = BlockPos::new(0, 0, 0);
+        let lever_b_pos = BlockPos::new(2, 0, 0);
+        let output_lamp_pos = BlockPos::new(1, 0, 3);
+
+        for a in 0..2 {
+            for b in 0..2 {
+                let lever_a_state = world.get_lever_power(lever_a_pos);
+                let lever_b_state = world.get_lever_power(lever_b_pos);
+                if lever_a_state != (a == 1) {
+                    world.on_use_block(lever_a_pos);
+                }
+                if lever_b_state != (b == 1) {
+                    world.on_use_block(lever_b_pos);
+                }
+
+                world.tick(2);
+                world.flush();
+                println!("A: {}, B: {}, Output: {}", a, b, world.is_lit(output_lamp_pos));
+                assert_eq!(world.is_lit(output_lamp_pos), a == 1 && b == 1);
+            }
+        }
     }
 
     #[test]
@@ -498,33 +532,7 @@ mod tests {
         assert_eq!(world.is_lit(BlockPos::new(15, 1, 0)), false);
     }
 
-    #[test]
-    fn test_simple_and_gate() {
-        let schematic = get_sample_and_gate_schematic();
-        let mut world = MchprsWorld::new(schematic).unwrap();
-
-        let lever_a_pos = BlockPos::new(0, 0, 0);
-        let lever_b_pos = BlockPos::new(2, 0, 0);
-        let output_lamp_pos = BlockPos::new(1, 0, 3);
-
-        for a in 0..2 {
-            for b in 0..2 {
-                let lever_a_state = world.get_lever_power(lever_a_pos);
-                let lever_b_state = world.get_lever_power(lever_b_pos);
-                if lever_a_state != (a == 1) {
-                    world.on_use_block(lever_a_pos);
-                }
-                if lever_b_state != (b == 1) {
-                    world.on_use_block(lever_b_pos);
-                }
-
-                world.tick(2);
-                world.flush();
-                println!("A: {}, B: {}, Output: {}", a, b, world.is_lit(output_lamp_pos));
-                assert_eq!(world.is_lit(output_lamp_pos), a == 1 && b == 1);
-            }
-        }
-    }
+    
 
     fn get_comparator_xor_gate() -> UniversalSchematic {
         let block_mappings: &[(&char, SimpleBlockMapping)] = &[

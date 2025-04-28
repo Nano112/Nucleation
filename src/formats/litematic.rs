@@ -123,34 +123,34 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
         // BlockStatePalette
         // Create a reordered palette with air always at index 0
         let mut reordered_palette = Vec::new();
-        
+
         // First, find and add air
-        let air_index = region.palette.iter().position(|block| block.name == "minecraft:air");
+        let air_index = region.palette.iter().position(|block| block.name.as_ref() == "minecraft:air");
         if let Some(air_idx) = air_index {
             reordered_palette.push(region.palette[air_idx].clone());
         } else {
             // If no air is found, add it
-            reordered_palette.push(BlockState::new("minecraft:air".to_string()));
+            reordered_palette.push(BlockState::new("minecraft:air"));
         }
-        
+
         // Then add all other blocks (skipping air since we already added it)
         for block in region.palette.iter() {
-            if block.name != "minecraft:air" {
+            if block.name.as_ref() != "minecraft:air" {
                 reordered_palette.push(block.clone());
             }
         }
-        
-        // Create the NBT list for the reordered palette
-        let palette = NbtList::from(reordered_palette.iter().map(|block_state| block_state.to_nbt()).collect::<Vec<NbtTag>>());
-        region_nbt.insert("BlockStatePalette", NbtTag::List(palette));
 
-        // BlockStates
-        // We need to map block indices from the original palette to the reordered palette
+        // Create the NBT list for the reordered palette
+        let mut palette_nbt = NbtList::new();
+        for block in &reordered_palette {
+            palette_nbt.push(block.to_nbt());
+        }
+        region_nbt.insert("BlockStatePalette", NbtTag::List(palette_nbt));
+
+        // Create a mapping from original palette to reordered palette
         let mut index_mapping = vec![0; region.palette.len()];
-        
-        // Build the mapping from original palette indices to reordered indices
         for (orig_idx, block) in region.palette.iter().enumerate() {
-            if block.name == "minecraft:air" {
+            if block.name.as_ref() == "minecraft:air" {
                 // Air is always mapped to 0 in the reordered palette
                 index_mapping[orig_idx] = 0;
             } else {
@@ -160,26 +160,35 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
                 index_mapping[orig_idx] = reordered_idx;
             }
         }
-        
-        // Remap block indices and create packed states
+
+        // BlockStates
+        // Instead of directly using region.blocks, we need to iterate through all positions
+        // in the bounding box and get the block indices
+        let bounding_box = region.get_bounding_box();
+        let volume = bounding_box.volume() as usize;
+
+        // Calculate bits needed for our reordered palette
         let bits_per_block = std::cmp::max((reordered_palette.len() as f64).log2().ceil() as usize, 2);
-        let size = region.blocks.len();
-        let expected_len = (size * bits_per_block + 63) / 64;
-        
+        let expected_len = (volume * bits_per_block + 63) / 64;
+
         let mut packed_states = vec![0i64; expected_len];
         let mask = (1i64 << bits_per_block) - 1;
-        
-        for (index, &block_state) in region.blocks.iter().enumerate() {
+
+        // Iterate through all positions in the region
+        for (index, (x, y, z)) in bounding_box.iter_coords().enumerate() {
+            // Get the block index at this position
+            let block_index = region.get_block_index(x, y, z).unwrap_or(0);
+
             // Map the original block state index to the reordered index
-            let mapped_state = index_mapping[block_state];
-            
+            let mapped_state = index_mapping[block_index];
+
             let bit_index = index * bits_per_block;
             let start_long_index = bit_index / 64;
             let end_long_index = (bit_index + bits_per_block - 1) / 64;
             let start_offset = bit_index % 64;
-            
+
             let value = (mapped_state as i64) & mask;
-            
+
             if start_long_index == end_long_index {
                 packed_states[start_long_index] |= value << start_offset;
             } else {
@@ -187,22 +196,25 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
                 packed_states[end_long_index] |= value >> (64 - start_offset);
             }
         }
-        
+
         // Handle negative numbers
         packed_states.iter_mut().for_each(|x| *x = *x as u64 as i64);
-        
+
         region_nbt.insert("BlockStates", NbtTag::LongArray(packed_states));
 
         // Entities
-        let entities = NbtList::from(region.entities.iter().map(|entity| entity.to_nbt()).collect::<Vec<NbtTag>>());
-        region_nbt.insert("Entities", NbtTag::List(entities));
+        let mut entities_nbt = NbtList::new();
+        for entity in &region.entities {
+            entities_nbt.push(entity.to_nbt());
+        }
+        region_nbt.insert("Entities", NbtTag::List(entities_nbt));
 
         // TileEntities
-        let tile_entities = NbtList::from(region.block_entities.values().map(|block_entity| {
-            NbtTag::Compound(block_entity.to_nbt())
-        }).collect::<Vec<NbtTag>>());
-        region_nbt.insert("TileEntities", NbtTag::List(tile_entities));
-
+        let mut tile_entities_nbt = NbtList::new();
+        for block_entity in region.block_entities.values() {
+            tile_entities_nbt.push(NbtTag::Compound(block_entity.to_nbt()));
+        }
+        region_nbt.insert("TileEntities", NbtTag::List(tile_entities_nbt));
 
         // PendingBlockTicks and PendingFluidTicks (not fully supported, using empty lists)
         region_nbt.insert("PendingBlockTicks", NbtTag::List(NbtList::new()));
@@ -213,7 +225,6 @@ fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
 
     regions
 }
-
 
 fn parse_metadata(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Result<(), Box<dyn std::error::Error>> {
     let metadata = root.get::<_, &NbtCompound>("Metadata")?;
@@ -239,7 +250,6 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
         }
         loop_count += 1;
 
-
         if let NbtTag::Compound(region_nbt) = region_tag {
             let position = region_nbt.get::<_, &NbtCompound>("Position")?;
             let size = region_nbt.get::<_, &NbtCompound>("Size")?;
@@ -259,7 +269,7 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
 
             // Parse BlockStatePalette
             let palette = region_nbt.get::<_, &NbtList>("BlockStatePalette")?;
-            region.palette = palette.iter().filter_map(|tag| {
+            let parsed_palette: Vec<BlockState> = palette.iter().filter_map(|tag| {
                 if let NbtTag::Compound(compound) = tag {
                     BlockState::from_nbt(compound).ok()
                 } else {
@@ -267,10 +277,33 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
                 }
             }).collect();
 
+            // Update region's palette
+            region.palette = parsed_palette;
+
+            // Rebuild the palette lookup
+            for (idx, block) in region.palette.iter().enumerate() {
+                region.palette_lookup.insert(block.clone(), idx as u16);
+            }
+
             // Parse BlockStates
             let block_states = region_nbt.get::<_, &[i64]>("BlockStates")?;
-            // region.unpack_block_states(block_states);
-            region.blocks = region.unpack_block_states(block_states);
+
+            // Get unpacked indices
+            let unpacked_indices = region.unpack_block_states(block_states);
+
+            // Now we need to set blocks in our sparse storage based on these indices
+            let bounding_box = region.get_bounding_box();
+            for (index, (x, y, z)) in bounding_box.iter_coords().enumerate() {
+                if index < unpacked_indices.len() {
+                    let block_index = unpacked_indices[index];
+                    // Only set non-air blocks (air is index 0)
+                    if block_index > 0 {
+                        // Direct access to set_block_at_index to avoid unnecessary checks
+                        region.set_block_at_index(x, y, z, block_index as u16);
+                    }
+                }
+            }
+
             // Parse Entities
             if let Ok(entities_list) = region_nbt.get::<_, &NbtList>("Entities") {
                 region.entities = entities_list.iter().filter_map(|tag| {
@@ -286,9 +319,8 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
             if let Ok(tile_entities_list) = region_nbt.get::<_, &NbtList>("TileEntities") {
                 for tag in tile_entities_list.iter() {
                     if let NbtTag::Compound(compound) = tag {
-                        if let block_entity = BlockEntity::from_nbt(compound) {
-                            region.block_entities.insert(block_entity.position, block_entity);
-                        }
+                        let block_entity = BlockEntity::from_nbt(compound);
+                        region.block_entities.insert(block_entity.position, block_entity);
                     }
                 }
             }
@@ -299,7 +331,6 @@ fn parse_regions(root: &NbtCompound, schematic: &mut UniversalSchematic) -> Resu
 
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use std::fs::File;

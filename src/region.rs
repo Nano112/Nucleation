@@ -29,6 +29,7 @@ pub struct Region {
     pub block_entities: StdHashMap<(i32, i32, i32), BlockEntity>,
 }
 
+
 fn serialize_block_entities<S>(
     block_entities: &StdHashMap<(i32, i32, i32), BlockEntity>,
     serializer: S,
@@ -540,7 +541,7 @@ impl Region {
         }
     }
 
-    fn get_chunk_coords_and_index(&self, x: i32, y: i32, z: i32) -> (i32, i32, i32, usize) {
+    pub(crate) fn get_chunk_coords_and_index(&self, x: i32, y: i32, z: i32) -> (i32, i32, i32, usize) {
         // Calculate chunk coordinates
         let chunk_x = x.div_euclid(SUB);
         let chunk_y = y.div_euclid(SUB);

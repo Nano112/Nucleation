@@ -33,6 +33,139 @@ fn create_test_schematic(size: usize) -> UniversalSchematic {
     schematic
 }
 
+fn benchmark_block_access_patterns(schematic: &UniversalSchematic, size: i32) {
+    use rand::prelude::*;
+
+    println!("\n===== BLOCK ACCESS PATTERN BENCHMARKS =====");
+
+    // 1. Random Sampling Test
+    println!("\n1. Random Sampling Test");
+    {
+        // We'll use a fixed seed for reproducibility
+        let seed = 42;
+        let mut rng = StdRng::seed_from_u64(seed);
+
+        // Calculate number of samples (scaled based on size)
+        let samples = std::cmp::min(1_000_000, (size as usize).pow(3) / 10);
+
+        let start = Instant::now();
+        let mut count = 0;
+
+        for _ in 0..samples {
+            // Fixed: Use the correct gen_range syntax with separate arguments
+            let x = rng.gen_range(0, size);
+            let y = rng.gen_range(0, size);
+            let z = rng.gen_range(0, size);
+
+            if schematic.get_block(x, y, z).is_some() {
+                count += 1;
+            }
+        }
+
+        let duration = start.elapsed();
+        let blocks_per_second = (count as f64 / duration.as_secs_f64()) as u64;
+
+        println!("  - Randomly sampled {} blocks in {:?}", count, duration);
+        println!("  - Performance: {} blocks per second", blocks_per_second);
+    }
+
+    // 2. Sequential Iteration Test
+    println!("\n2. Sequential Iteration Test");
+    {
+        // For large schematics, use stepping to avoid excessive runtime
+        let step = if size > 100 { std::cmp::max(1, size / 100) } else { 1 };
+
+        let start = Instant::now();
+        let mut count = 0;
+
+        for x in (0..size).step_by(step as usize) {
+            for y in (0..size).step_by(step as usize) {
+                for z in (0..size).step_by(step as usize) {
+                    if schematic.get_block(x, y, z).is_some() {
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        let duration = start.elapsed();
+        let blocks_per_second = (count as f64 / duration.as_secs_f64()) as u64;
+
+        println!("  - Sequentially accessed {} blocks (step size = {}) in {:?}",
+                 count, step, duration);
+
+        // Calculate extrapolated full-volume rate
+        if step > 1 {
+            let extrapolated_rate = blocks_per_second * (step as u64).pow(3);
+            println!("  - Extrapolated performance: {} blocks per second",
+                     extrapolated_rate);
+        } else {
+            println!("  - Performance: {} blocks per second", blocks_per_second);
+        }
+    }
+
+    // 3. Chunk-then-Block Test
+    println!("\n3. Chunk-then-Block Test");
+    {
+        let chunk_size = 16; // Standard Minecraft chunk size
+
+        // Time how long it takes to split into chunks
+        let start = Instant::now();
+        let chunks = schematic.split_into_chunks(chunk_size, chunk_size, chunk_size);
+        let split_duration = start.elapsed();
+
+        println!("  - Split into {} chunks in {:?}", chunks.len(), split_duration);
+
+        // Time the actual block access
+        let start = Instant::now();
+        let mut count = 0;
+
+        for chunk in &chunks {
+            // Calculate chunk bounds
+            let chunk_min_x = chunk.chunk_x * chunk_size;
+            let chunk_min_y = chunk.chunk_y * chunk_size;
+            let chunk_min_z = chunk.chunk_z * chunk_size;
+
+            let chunk_max_x = chunk_min_x + chunk_size - 1;
+            let chunk_max_y = chunk_min_y + chunk_size - 1;
+            let chunk_max_z = chunk_min_z + chunk_size - 1;
+
+            // Process all blocks in the chunk
+            for x in chunk_min_x..=chunk_max_x {
+                for y in chunk_min_y..=chunk_max_y {
+                    for z in chunk_min_z..=chunk_max_z {
+                        if schematic.get_block(x, y, z).is_some() {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let iteration_duration = start.elapsed();
+        let total_duration = split_duration + iteration_duration;
+        let blocks_per_second = (count as f64 / iteration_duration.as_secs_f64()) as u64;
+
+        println!("  - Accessed {} blocks via chunks in {:?}", count, iteration_duration);
+        println!("  - Total time (split + access): {:?}", total_duration);
+        println!("  - Performance: {} blocks per second", blocks_per_second);
+    }
+
+    // Additional test for built-in iterator (for comparison)
+    println!("\n4. Built-in Iterator Test");
+    {
+        let start = Instant::now();
+        let count = schematic.iter_blocks().count();
+        let duration = start.elapsed();
+        let blocks_per_second = (count as f64 / duration.as_secs_f64()) as u64;
+
+        println!("  - Iterated through {} blocks using iter_blocks() in {:?}",
+                 count, duration);
+        println!("  - Performance: {} blocks per second", blocks_per_second);
+    }
+
+    println!("\n==========================================\n");
+}
 fn ensure_bench_directory() {
     let path = Path::new("./benches/output");
     if !path.exists() {
@@ -45,13 +178,16 @@ fn main() {
     ensure_bench_directory();
 
     // Define a larger schematic size to make hotspots more visible
-    let size = 1000;
+    let size = 500;
 
     // 1. Create a large schematic
     println!("Creating schematic of size {}x{}x{}", size, size, size);
     let start = Instant::now();
     let schematic = create_test_schematic(size);
     println!("Creation took {:?}", start.elapsed());
+
+    println!("\nRunning block access pattern benchmarks...");
+    benchmark_block_access_patterns(&schematic, size as i32);
 
     // 2. Export as .schem
     println!("Exporting to .schem format");

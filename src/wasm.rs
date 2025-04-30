@@ -99,6 +99,95 @@ impl JsChunksIterator {
             result.into()
         }
     }
+
+    #[wasm_bindgen(js_name = countNonEmptyChunks)]
+    pub fn count_non_empty_chunks(&self) -> i32 {
+        // Create a clone of the iterator to avoid consuming the original
+        let schematic = self.inner.schematic.clone();
+        let bbox = schematic.get_bounding_box();
+        let chunk_width = self.inner.chunk_width;
+        let chunk_height = self.inner.chunk_height;
+        let chunk_length = self.inner.chunk_length;
+
+        // Calculate min and max chunk coordinates
+        let min_chunk_x = if bbox.min.0 < 0 {
+            (bbox.min.0 - chunk_width + 1) / chunk_width
+        } else {
+            bbox.min.0 / chunk_width
+        };
+
+        let min_chunk_y = if bbox.min.1 < 0 {
+            (bbox.min.1 - chunk_height + 1) / chunk_height
+        } else {
+            bbox.min.1 / chunk_height
+        };
+
+        let min_chunk_z = if bbox.min.2 < 0 {
+            (bbox.min.2 - chunk_length + 1) / chunk_length
+        } else {
+            bbox.min.2 / chunk_length
+        };
+
+        let max_chunk_x = (bbox.max.0 + chunk_width - 1) / chunk_width;
+        let max_chunk_y = (bbox.max.1 + chunk_height - 1) / chunk_height;
+        let max_chunk_z = (bbox.max.2 + chunk_length - 1) / chunk_length;
+
+        let mut count = 0;
+
+        // Iterate through all possible chunks
+        for chunk_x in min_chunk_x..=max_chunk_x {
+            for chunk_y in min_chunk_y..=max_chunk_y {
+                for chunk_z in min_chunk_z..=max_chunk_z {
+                    // Calculate chunk bounds
+                    let chunk_min_x = chunk_x * chunk_width;
+                    let chunk_min_y = chunk_y * chunk_height;
+                    let chunk_min_z = chunk_z * chunk_length;
+
+                    let chunk_max_x = chunk_min_x + chunk_width - 1;
+                    let chunk_max_y = chunk_min_y + chunk_height - 1;
+                    let chunk_max_z = chunk_min_z + chunk_length - 1;
+
+                    // Check if this chunk intersects with the bounding box
+                    if chunk_min_x > bbox.max.0 || chunk_max_x < bbox.min.0 ||
+                        chunk_min_y > bbox.max.1 || chunk_max_y < bbox.min.1 ||
+                        chunk_min_z > bbox.max.2 || chunk_max_z < bbox.min.2 {
+                        continue;
+                    }
+
+                    // Define chunk bounds clamped to the schematic bounding box
+                    let min_x = std::cmp::max(chunk_min_x, bbox.min.0);
+                    let min_y = std::cmp::max(chunk_min_y, bbox.min.1);
+                    let min_z = std::cmp::max(chunk_min_z, bbox.min.2);
+
+                    let max_x = std::cmp::min(chunk_max_x, bbox.max.0);
+                    let max_y = std::cmp::min(chunk_max_y, bbox.max.1);
+                    let max_z = std::cmp::min(chunk_max_z, bbox.max.2);
+
+                    // Check if chunk has any non-air blocks
+                    let mut has_blocks = false;
+                    'outer: for x in min_x..=max_x {
+                        for y in min_y..=max_y {
+                            for z in min_z..=max_z {
+                                if let Some(block) = schematic.get_block(x, y, z) {
+                                    // Skip air blocks
+                                    if !block.name.contains("air") {
+                                        has_blocks = true;
+                                        break 'outer;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if has_blocks {
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        count
+    }
 }
 // All your existing WASM implementations go here...
 #[wasm_bindgen]
@@ -361,18 +450,26 @@ impl SchematicWrapper {
 
     #[wasm_bindgen]
     pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> JsValue {
-        // 1. plain JS object that will act as the iterable
+        // 1. Create the iterator instance
+        let iterator = JsChunksIterator::new(self, chunk_width, chunk_height, chunk_length);
+
+        // 2. Get the count of non-empty chunks
+        let count = iterator.count_non_empty_chunks();
+
+        // 3. Create a new iterator for actual iteration
+        let iterator_for_js = JsChunksIterator::new(self, chunk_width, chunk_height, chunk_length);
+
+        // 4. Create the JS iterable object
         let js_iterable = js_sys::Object::new();
 
-        // 2. Rust-backed iterator, converted into a real JS object
-        let iterator = JsChunksIterator::new(self, chunk_width, chunk_height, chunk_length);
+        // 5. Store the iterator
         js_sys::Reflect::set(
             &js_iterable,
             &JsValue::from_str("_iterator"),
-            &iterator.into(),                   // <-- fix
+            &iterator_for_js.into(),
         ).unwrap();
 
-        // 3. make the object itself iterable
+        // 6. Make the object iterable
         let symbol_iterator_fn = js_sys::Function::new_no_args(r#"return this._iterator;"#);
         js_sys::Reflect::set(
             &js_iterable,
@@ -380,13 +477,20 @@ impl SchematicWrapper {
             &symbol_iterator_fn.into(),
         ).unwrap();
 
-        // 4. optional helper that gathers everything into an array
+        // 7. Set the exact length property
+        js_sys::Reflect::set(
+            &js_iterable,
+            &JsValue::from_str("length"),
+            &JsValue::from(count),
+        ).unwrap();
+
+        // 8. Add the toArray helper
         let to_array_fn = js_sys::Function::new_no_args(
             r#"
-        const out = [];
-        for (const chunk of this) out.push(chunk);
-        return out;
-        "#
+    const out = [];
+    for (const chunk of this) out.push(chunk);
+    return out;
+    "#
         );
         js_sys::Reflect::set(&js_iterable, &JsValue::from_str("toArray"), &to_array_fn.into()).unwrap();
 

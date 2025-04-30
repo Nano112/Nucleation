@@ -5,11 +5,11 @@ use crate::{BlockState, UniversalSchematic};
 
 // First, define a struct to represent our lazy iterator on the Rust side
 pub struct ChunksIterator {
-    schematic: Rc<UniversalSchematic>,
+    pub(crate) schematic: Rc<UniversalSchematic>,
     bbox: BoundingBox,
-    chunk_width: i32,
-    chunk_height: i32,
-    chunk_length: i32,
+    pub(crate) chunk_width: i32,
+    pub(crate) chunk_height: i32,
+    pub(crate) chunk_length: i32,
 
     // Current position in the iteration
     current_chunk_x: i32,

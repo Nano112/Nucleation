@@ -3,6 +3,7 @@ use std::io::{BufReader, Cursor, Read};
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
+use hashbrown::HashMap;
 use quartz_nbt::{NbtCompound, NbtList, NbtTag};
 use quartz_nbt::io::{read_nbt, Flavor};
 use crate::{BlockState, UniversalSchematic};
@@ -52,12 +53,32 @@ pub fn is_schematic(data: &[u8]) -> bool {
 
     // Otherwise check for v2 format
     root.get::<_, i32>("DataVersion").is_ok() &&
-    root.get::<_, i16>("Width").is_ok() &&
-    root.get::<_, i16>("Height").is_ok() &&
-    root.get::<_, i16>("Length").is_ok() &&
-    root.get::<_, &Vec<i8>>("BlockData").is_ok()
+        root.get::<_, i16>("Width").is_ok() &&
+        root.get::<_, i16>("Height").is_ok() &&
+        root.get::<_, i16>("Length").is_ok() &&
+        root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
+#[inline]
+pub fn encode_varint_optimized(value: u32, buffer: &mut Vec<u8>) {
+    buffer.clear(); // Reuse the buffer instead of creating a new one
+    let mut val = value;
+    loop {
+        let mut byte = (val & 0b0111_1111) as u8;
+        val >>= 7;
+        if val != 0 {
+            byte |= 0b1000_0000;
+        }
+        buffer.push(byte);
+        if val == 0 {
+            break;
+        }
+    }
+}
+
+
+
+// 2. Optimized block data generation with pre-allocation
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
 
@@ -82,25 +103,23 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     root.insert("Palette", palette_nbt);
     root.insert("PaletteMax", palette_max + 1);
 
-    // Generate block data from our sparse storage
+    // Generate block data from our sparse storage with optimizations
     let bounding_box = merged_region.get_bounding_box();
-    let block_data: Vec<u8> = bounding_box.iter_coords()
-        .map(|(x, y, z)| {
-            // Get the block index at this position
-            merged_region.get_block_index(x, y, z).unwrap_or(0) as u32
-        })
-        .flat_map(encode_varint)
-        .collect();
 
-    //attempt to decode the block data for debug since it's buggy
-    let mut reader = Cursor::new(block_data.clone());
-    let mut decoded_data = Vec::new();
-    while reader.position() < block_data.len() as u64 {
-        let value = decode_varint(&mut reader)?;
-        decoded_data.push(value);
+    // Pre-calculate the capacity needed (estimate)
+    let block_count = bounding_box.volume() as usize;
+    // Estimate 1.5 bytes per block on average for varint encoding
+    let estimated_capacity = (block_count as f32 * 1.5) as usize;
+
+    let mut block_data = Vec::with_capacity(estimated_capacity);
+    let mut varint_buffer = Vec::with_capacity(5); // Max 5 bytes for a u32
+
+    // Generate block data with fewer allocations
+    for (x, y, z) in bounding_box.iter_coords() {
+        let block_index = merged_region.get_block_index(x, y, z).unwrap_or(0) as u32;
+        encode_varint_optimized(block_index, &mut varint_buffer);
+        block_data.extend_from_slice(&varint_buffer);
     }
-    // println!("Decoded Data: {:?}", decoded_data);
-    // println!("Decoded Data Length: {:?}", decoded_data.len());
 
     root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
@@ -168,19 +187,57 @@ pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::er
         region.palette_lookup.insert(block.clone(), idx as u16);
     }
 
-    // Now set blocks using our sparse storage model
+    // Now set blocks using our sparse storage model with optimized chunk processing
     let size = (width as i32, height as i32, length as i32);
-    for x in 0..size.0 {
-        for y in 0..size.1 {
-            for z in 0..size.2 {
-                let idx = ((y * size.0 * size.2) + (z * size.0) + x) as usize;
-                if idx < block_data.len() {
-                    let block_idx = block_data[idx];
-                    // Only set non-air blocks (index 0 is air)
-                    if block_idx > 0 {
-                        region.set_block_at_index(x, y, z, block_idx as u16);
-                    }
-                }
+    let sub_chunk_size = 16; // standard Minecraft chunk size
+
+    // First pass: identify required chunks and group blocks by chunk
+    let mut chunk_blocks: HashMap<(i32, i32, i32), Vec<(usize, u16)>> = HashMap::new();
+
+    // Group blocks by chunk to minimize HashMap lookups
+    for (idx, &block_idx) in block_data.iter().enumerate() {
+        if block_idx > 0 {  // Only process non-air blocks
+            // Fix the coordinate calculation to match the original index formula
+            let (x, y, z) = (
+                (idx % (size.0 as usize)) as i32,
+                (idx / ((size.0 * size.2) as usize)) as i32,  // Corrected this line
+                ((idx / (size.0 as usize)) % (size.2 as usize)) as i32,  // Corrected this line
+            );
+
+            // Calculate chunk coordinates
+            let chunk_coords = (
+                x.div_euclid(sub_chunk_size),
+                y.div_euclid(sub_chunk_size),
+                z.div_euclid(sub_chunk_size),
+            );
+
+            // Calculate local position within chunk
+            let local_x = x.rem_euclid(sub_chunk_size) as usize;
+            let local_y = y.rem_euclid(sub_chunk_size) as usize;
+            let local_z = z.rem_euclid(sub_chunk_size) as usize;
+            let local_idx = (local_y * sub_chunk_size as usize * sub_chunk_size as usize)
+                + (local_z * sub_chunk_size as usize)
+                + local_x;
+
+            chunk_blocks.entry(chunk_coords)
+                .or_insert_with(Vec::new)
+                .push((local_idx, block_idx as u16));
+        }
+    }
+
+    // Pre-allocate all required chunks
+    for &chunk_coords in chunk_blocks.keys() {
+        let chunk_key = chunk_coords;
+        if !region.chunks.contains_key(&chunk_key) {
+            region.chunks.insert(chunk_key, Box::new([0; 4096]));
+        }
+    }
+
+    // Batch set blocks in each chunk
+    for (chunk_coords, blocks) in chunk_blocks {
+        if let Some(chunk) = region.chunks.get_mut(&chunk_coords) {
+            for (local_idx, block_idx) in blocks {
+                chunk[local_idx] = block_idx;
             }
         }
     }
@@ -330,7 +387,6 @@ fn parse_block_data(
     height: u32,
     length: u32,
 ) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    // V2 = BlockData, V3 = Data
     let block_data_i8 = region_tag
         .get::<_, &Vec<i8>>("BlockData")
         .or(region_tag.get::<_, &Vec<i8>>("Data"))?;
@@ -340,28 +396,40 @@ fn parse_block_data(
                                    block_data_i8.len())
     };
 
-    // ---------- fast var-int decode ----------
-    #[inline]
-    fn read_varint(slice: &mut &[u8]) -> Option<u32> {
-        let mut out = 0u32;
-        let mut shift = 0;
-        while !slice.is_empty() {
-            let byte = slice[0];
-            *slice = &slice[1..];
-            out |= ((byte & 0x7F) as u32) << shift;
-            if byte & 0x80 == 0 {
-                return Some(out);
-            }
-            shift += 7;
-        }
-        None
-    }
-
     let expected_length = (width * height * length) as usize;
     let mut block_data: Vec<u32> = Vec::with_capacity(expected_length);
 
-    while let Some(id) = read_varint(&mut block_data_u8) {
-        block_data.push(id);
+    // Optimized batch decoding
+    let batch_size = 1024;
+    let mut buffer = vec![0u32; batch_size];
+
+    while !block_data_u8.is_empty() && block_data.len() < expected_length {
+        let current_batch_size = std::cmp::min(batch_size, block_data_u8.len());
+        let mut decoded_count = 0;
+
+        let mut pos = 0;
+        while pos < current_batch_size && decoded_count < batch_size {
+            let mut result = 0u32;
+            let mut shift = 0;
+
+            while pos < current_batch_size {
+                let byte = block_data_u8[pos];
+                pos += 1;
+                result |= ((byte & 0x7F) as u32) << shift;
+                if byte & 0x80 == 0 {
+                    buffer[decoded_count] = result;
+                    decoded_count += 1;
+                    break;
+                }
+                shift += 7;
+                if shift >= 32 {
+                    return Err("Varint is too long".into());
+                }
+            }
+        }
+
+        block_data.extend_from_slice(&buffer[..decoded_count]);
+        block_data_u8 = &block_data_u8[pos..];
     }
 
     if block_data.len() != expected_length {

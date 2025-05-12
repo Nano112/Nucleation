@@ -582,46 +582,132 @@ impl UniversalSchematic {
         Ok(())
     }
 
-    pub fn split_into_chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<Chunk> {
-        use std::collections::HashMap;
-        let mut chunk_map: HashMap<(i32, i32, i32), Vec<BlockPosition>> = HashMap::new();
+    // Optimized implementation of split_into_chunks
+    pub fn split_into_chunks(&self, chunk_w: i32, chunk_h: i32, chunk_l: i32) -> Vec<Chunk> {
+        // ── fast‑exit ───────────────────────────────────────────────────────
         let bbox = self.get_bounding_box();
+        if bbox.min.0 > bbox.max.0 || bbox.min.1 > bbox.max.1 || bbox.min.2 > bbox.max.2 {
+            return Vec::new();
+        }
 
-        // Helper function to get chunk coordinate
-        let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
-            let offset = if pos < 0 { chunk_size - 1 } else { 0 };
-            (pos - offset) / chunk_size
-        };
+        // Helper for floor‑style chunk coords that works for negatives.
+        #[inline(always)]
+        fn chunk_coord(p: i32, size: i32) -> i32 {
+            // `size` is always a power‑of‑two (16) in Minecraft ⇒ bit trick.
+            (p - (p & (size - 1))) / size
+        }
 
-        // Iterate through the actual bounding box instead of dimensions
-        for x in bbox.min.0..=bbox.max.0 {
-            for y in bbox.min.1..=bbox.max.1 {
-                for z in bbox.min.2..=bbox.max.2 {
-                    if self.get_block(x, y, z).is_some() {
-                        let chunk_x = get_chunk_coord(x, chunk_width);
-                        let chunk_y = get_chunk_coord(y, chunk_height);
-                        let chunk_z = get_chunk_coord(z, chunk_length);
-                        let chunk_key = (chunk_x, chunk_y, chunk_z);
+        let (min_cx, min_cy, min_cz) = (
+            chunk_coord(bbox.min.0, chunk_w),
+            chunk_coord(bbox.min.1, chunk_h),
+            chunk_coord(bbox.min.2, chunk_l),
+        );
+        let (max_cx, max_cy, max_cz) = (
+            chunk_coord(bbox.max.0 + chunk_w - 1, chunk_w),
+            chunk_coord(bbox.max.1 + chunk_h - 1, chunk_h),
+            chunk_coord(bbox.max.2 + chunk_l - 1, chunk_l),
+        );
 
-                        chunk_map
-                            .entry(chunk_key)
-                            .or_insert_with(Vec::new)
-                            .push(BlockPosition { x, y, z });
+        let est = (((max_cx - min_cx + 1)
+            * (max_cy - min_cy + 1)
+            * (max_cz - min_cz + 1)) as f32
+            * 0.4)
+            .max(100.0) as usize;
+        let mut chunks = Vec::with_capacity(est);
+
+        // One reusable buffer for every chunk we touch.
+        let mut pos_buf: Vec<BlockPosition> = Vec::with_capacity(
+            (chunk_w * chunk_h * chunk_l / 4) as usize,
+        );
+
+        for cx in min_cx..=max_cx {
+            for cy in min_cy..=max_cy {
+                for cz in min_cz..=max_cz {
+                    pos_buf.clear(); // retain capacity
+
+                    // Chunk bounds
+                    let (cmin_x, cmin_y, cmin_z) = (cx * chunk_w, cy * chunk_h, cz * chunk_l);
+                    let (cmax_x, cmax_y, cmax_z) = (
+                        cmin_x + chunk_w - 1,
+                        cmin_y + chunk_h - 1,
+                        cmin_z + chunk_l - 1,
+                    );
+
+                    // Clamp to schematic bounds
+                    let (min_x, min_y, min_z) = (
+                        cmin_x.max(bbox.min.0),
+                        cmin_y.max(bbox.min.1),
+                        cmin_z.max(bbox.min.2),
+                    );
+                    let (max_x, max_y, max_z) = (
+                        cmax_x.min(bbox.max.0),
+                        cmax_y.min(bbox.max.1),
+                        cmax_z.min(bbox.max.2),
+                    );
+                    if min_x > max_x || min_y > max_y || min_z > max_z {
+                        continue; // no intersection
                     }
+
+                    // Scan intersecting regions only
+                    for region in self.regions.values() {
+                        let rbb = region.get_bounding_box();
+                        let (rmin_x, rmin_y, rmin_z) = (
+                            min_x.max(rbb.min.0),
+                            min_y.max(rbb.min.1),
+                            min_z.max(rbb.min.2),
+                        );
+                        let (rmax_x, rmax_y, rmax_z) = (
+                            max_x.min(rbb.max.0),
+                            max_y.min(rbb.max.1),
+                            max_z.min(rbb.max.2),
+                        );
+                        if rmin_x > rmax_x || rmin_y > rmax_y || rmin_z > rmax_z {
+                            continue;
+                        }
+
+                        // One flat loop – gathers all non‑air blocks.
+                        let mut x = rmin_x;
+                        while x <= rmax_x {
+                            let mut y = rmin_y;
+                            while y <= rmax_y {
+                                let mut z = rmin_z;
+                                while z <= rmax_z {
+                                    if region
+                                        .get_block_index(x, y, z)
+                                        .map_or(false, |idx| idx > 0)
+                                    {
+                                        pos_buf.push(BlockPosition { x, y, z });
+                                    }
+                                    z += 1;
+                                }
+                                y += 1;
+                            }
+                            x += 1;
+                        }
+                    }
+
+                    if pos_buf.is_empty() {
+                        continue; // empty chunk
+                    }
+
+                    // ***** Item 1 & 2 implementation *****
+                    // Move the filled buffer into the chunk, replacing it with
+                    // a fresh Vec that *preserves the allocation* for reuse.
+                    // Capture the current capacity **before** we mut‑borrow `pos_buf`.
+                    let positions_owned = pos_buf.split_off(0); // O(1) move; pos_buf keeps its capacity
+
+                    chunks.push(Chunk {
+                        chunk_x: cx,
+                        chunk_y: cy,
+                        chunk_z: cz,
+                        positions: positions_owned,
+                    });
                 }
             }
         }
 
-        chunk_map.into_iter()
-            .map(|((chunk_x, chunk_y, chunk_z), positions)| Chunk {
-                chunk_x,
-                chunk_y,
-                chunk_z,
-                positions,
-            })
-            .collect()
+        chunks
     }
-
     pub fn iter_blocks(&self) -> impl Iterator<Item=(BlockPosition, &BlockState)> {
         self.regions.values().flat_map(|region| {
             // Get the region's bounding box

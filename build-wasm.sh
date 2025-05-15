@@ -1,118 +1,100 @@
 #!/bin/bash
 set -e
 
-# --- Configuration ---
 CRATE_NAME="nucleation"
-BUNDLER_OUT_NAME="${CRATE_NAME}"
-WEB_OUT_NAME="${CRATE_NAME}-web"
-# --- End Configuration ---
+OUT_NAME="${CRATE_NAME}"
 
-echo "INFO: Starting WASM build process for ${CRATE_NAME}..."
-echo "INFO: Cleaning previous build artifacts (pkg-bundler/, pkg-web/, pkg/)..."
-rm -rf pkg-bundler/ pkg-web/ pkg/
-echo "INFO: Previous build artifacts cleaned."
+echo "INFO: Cleaning previous build artifacts (pkg/)..."
+rm -rf pkg/
 
-# 1. Build for Bundlers
-echo ""
-echo "INFO: Building WASM package for BUNDLERS..."
-wasm-pack build --target bundler --out-dir pkg-bundler --out-name "${BUNDLER_OUT_NAME}"
-echo "INFO: Bundler build complete. Files in pkg-bundler/:"
-ls -l pkg-bundler/ # Expecting nucleation.js, nucleation_bg.wasm, nucleation_bg.js, nucleation.d.ts
+echo "INFO: Building WASM package (target: bundler, feature: wasm)..."
+wasm-pack build --target bundler --out-dir pkg --out-name "${OUT_NAME}" --features wasm
 
-# 2. Build for Direct Web Use / CDN
-echo ""
-echo "INFO: Building WASM package for WEB/CDN..."
-wasm-pack build --target web --out-dir pkg-web --out-name "${WEB_OUT_NAME}"
-echo "INFO: Web build complete. Files in pkg-web/:"
-ls -l pkg-web/ # Expecting nucleation-web.js, nucleation-web_bg.wasm, nucleation-web.d.ts (NO _bg.js here)
+echo "INFO: Build complete. Verifying essential files in pkg/..."
+ls -l pkg/
 
-# 3. Prepare the final 'pkg' directory
-echo ""
-echo "INFO: Preparing final 'pkg' directory for publishing..."
-mkdir -p pkg
-
-# 3a. Copy BUNDLER output (primary npm entries)
-echo "INFO: Copying BUNDLER files to pkg/..."
-cp pkg-bundler/"${BUNDLER_OUT_NAME}".js pkg/
-cp pkg-bundler/"${BUNDLER_OUT_NAME}".d.ts pkg/
-cp pkg-bundler/"${BUNDLER_OUT_NAME}"_bg.wasm pkg/
-if [ -f pkg-bundler/"${BUNDLER_OUT_NAME}"_bg.js ]; then # Bundler target DOES produce _bg.js
-    cp pkg-bundler/"${BUNDLER_OUT_NAME}"_bg.js pkg/
-else
-    echo "ERROR: BUNDLER JS helper (${BUNDLER_OUT_NAME}_bg.js) not found. This is critical."
+if [ ! -f pkg/"${OUT_NAME}_bg.js" ]; then
+    echo "ERROR: pkg/${OUT_NAME}_bg.js (JS helper with class wrappers) is MISSING. Build failed."
     exit 1
 fi
-cp pkg-bundler/package.json pkg/ # Start with bundler's package.json
 
-# 3b. Copy WEB output
-echo "INFO: Copying WEB files to pkg/..."
-cp pkg-web/"${WEB_OUT_NAME}".js pkg/         # e.g., nucleation-web.js
-cp pkg-web/"${WEB_OUT_NAME}"_bg.wasm pkg/    # e.g., nucleation-web_bg.wasm
-# NO _bg.js to copy for web target, as it's inlined in nucleation-web.js
-# Optionally copy web's .d.ts if you want separate types or if it's different:
-if [ -f pkg-web/"${WEB_OUT_NAME}".d.ts ]; then
-    cp pkg-web/"${WEB_OUT_NAME}".d.ts pkg/"${WEB_OUT_NAME}".d.ts
+if ! grep -q "class SchematicWrapper" pkg/"${OUT_NAME}_bg.js"; then
+    echo "ERROR: SchematicWrapper class not found in pkg/${OUT_NAME}_bg.js. 'wasm' feature might not have enabled bindings correctly."
+    exit 1
 fi
+echo "INFO: Essential JS helper file and SchematicWrapper class found."
 
-# 4. Modify the package.json (now at pkg/package.json)
-echo ""
-echo "INFO: Modifying pkg/package.json..."
+echo "INFO: Modifying pkg/package.json for npm publishing..."
 node -e "
 const fs = require('fs');
-const pkgPath = './pkg/package.json';
-if (!fs.existsSync(pkgPath)) { console.error('ERROR: pkg/package.json does not exist.'); process.exit(1); }
+const path = require('path');
+
+const pkgPath = path.join('pkg', 'package.json');
+const cargoTomlPath = path.join('..', 'Cargo.toml'); // Assuming Cargo.toml is one level up from where pkg is created by wasm-pack
+
+if (!fs.existsSync(pkgPath)) {
+  console.error('ERROR: pkg/package.json does not exist. wasm-pack build may have failed.');
+  process.exit(1);
+}
+
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-pkg.name = '${CRATE_NAME}'; // Ensure crate name is set
+// Ensure 'files' array includes all necessary outputs for bundler target
 pkg.files = [
-    '${BUNDLER_OUT_NAME}.js',
-    '${BUNDLER_OUT_NAME}_bg.wasm',
-    '${BUNDLER_OUT_NAME}_bg.js', // Bundler helper JS
-    '${BUNDLER_OUT_NAME}.d.ts',
-
-    '${WEB_OUT_NAME}.js',         // Web main JS
-    '${WEB_OUT_NAME}_bg.wasm',    // Web WASM
-    // '${WEB_OUT_NAME}.d.ts',    // If you copied web-specific .d.ts
+    '${OUT_NAME}.js',         // e.g., nucleation.js
+    '${OUT_NAME}_bg.wasm',    // e.g., nucleation_bg.wasm
+    '${OUT_NAME}_bg.js',      // e.g., nucleation_bg.js (contains JS wrappers)
+    '${OUT_NAME}.d.ts',       // e.g., nucleation.d.ts
     'README.md'
 ];
-pkg.files = [...new Set(pkg.files)]; // Remove duplicates if any
+pkg.files = [...new Set(pkg.files)]; // Remove duplicates
 
-// Main entries for bundlers (npm/yarn install)
-pkg.module = './${BUNDLER_OUT_NAME}.js'; // ES module (for bundlers)
-pkg.main = './${BUNDLER_OUT_NAME}.js';   // Could be CommonJS if your bundler output was CJS
-pkg.types = './${BUNDLER_OUT_NAME}.d.ts';
+// Ensure standard fields are set (wasm-pack usually handles these from Cargo.toml)
+pkg.name = pkg.name || '${CRATE_NAME}';
+pkg.module = pkg.module || '${OUT_NAME}.js';
+pkg.main = pkg.main || '${OUT_NAME}.js';     // For CommonJS compatibility if needed, often same as module
+pkg.types = pkg.types || '${OUT_NAME}.d.ts';
 
-// Modern 'exports' field for explicit resolution
-pkg.exports = {
-  '.': { // For 'import ... from \"nucleation\"'
-    'import': './${BUNDLER_OUT_NAME}.js',
-    // 'require': './<some_cjs_wrapper_if_you_make_one>.js', // If you provide a CJS wrapper
-    'types': './${BUNDLER_OUT_NAME}.d.ts'
-  },
-  './web': { // For 'import ... from \"nucleation/web\"' or direct CDN to this file
-    'import': './${WEB_OUT_NAME}.js',
-    'types': './${WEB_OUT_NAME}.d.ts' // Assuming you copy nucleation-web.d.ts
-  },
-  './package.json': './package.json'
-};
-// Note: Ensure nucleation-web.d.ts is copied if referenced in exports['./web'].types
+// Attempt to synchronize version from root Cargo.toml if not already set by wasm-pack
+if (!pkg.version && fs.existsSync(cargoTomlPath)) {
+    try {
+        const cargoTomlContent = fs.readFileSync(cargoTomlPath, 'utf8');
+        const versionMatch = cargoTomlContent.match(/^version\s*=\s*\"([^\"]+)\"/m);
+        if (versionMatch && versionMatch[1]) {
+            pkg.version = versionMatch[1];
+            console.log('INFO: Set version in pkg/package.json from root Cargo.toml:', pkg.version);
+        }
+    } catch (e) {
+        console.warn('WARN: Could not read version from root Cargo.toml:', e.message);
+    }
+}
+if (!pkg.version) {
+    console.warn('WARN: Version not set in pkg/package.json and could not be read from Cargo.toml. Please set manually or ensure wasm-pack sets it.');
+}
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-console.log('INFO: Successfully modified pkg/package.json');
+console.log('INFO: pkg/package.json has been successfully modified.');
 "
 
-# 5. Create/Copy README.md into pkg/
+# Create/Copy README.md into pkg/ if it doesn't exist in pkg/ yet
 if [ ! -f "pkg/README.md" ]; then
-  if [ -f "README.md" ]; then cp README.md pkg/README.md;
-  else echo \"# ${CRATE_NAME}\" > pkg/README.md; fi
+  if [ -f "README.md" ]; then # Check for README.md in the project root
+    echo "INFO: Copying project README.md to pkg/"
+    cp README.md pkg/README.md
+  else
+    echo "INFO: Creating a basic README.md in pkg/"
+    echo \"# ${CRATE_NAME}\" > pkg/README.md
+    echo \"\" >> pkg/README.md
+    echo \"WebAssembly library built from Rust using '--target bundler'.\" >> pkg/README.md
+  fi
 fi
 
 echo ""
 echo "--------------------------------------------------------------------"
-echo " BUILD COMPLETE"
+echo " BUILD SCRIPT COMPLETE (target: bundler, feature: wasm)"
 echo "--------------------------------------------------------------------"
-echo "The 'pkg' directory is ready for 'npm publish' (run from within 'pkg/')."
-echo "Key files:"
-echo "  - ${BUNDLER_OUT_NAME}.js / _bg.wasm / _bg.js (For bundlers, default import)"
-echo "  - ${WEB_OUT_NAME}.js / _bg.wasm (For CDN/direct web, import from '${CRATE_NAME}/web' or direct CDN path)"
+echo "The 'pkg/' directory is prepared for testing or publishing."
+echo "Key files for CDN usage (manual setup required in JS):"
+echo "  - pkg/${OUT_NAME}_bg.js (Contains JS wrappers like SchematicWrapper)"
+echo "  - pkg/${OUT_NAME}_bg.wasm (The WASM binary)"
 echo "--------------------------------------------------------------------"

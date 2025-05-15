@@ -77,27 +77,33 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
     metadata.insert("Description", NbtTag::String(schematic.metadata.description.clone().unwrap_or_default()));
     metadata.insert("Author", NbtTag::String(schematic.metadata.author.clone().unwrap_or_default()));
 
-    let created_time = if let Some(time) = schematic.metadata.created {
+    // Get current time as milliseconds since epoch, safely handling both WASM and non-WASM environments
+    let now = if let Some(time) = schematic.metadata.created {
+        // Use existing timestamp if available
         time as i64
     } else {
-        // Generate current time based on platform
-        #[cfg(feature = "wasm")]
+        // Generate current timestamp based on platform
+        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
         let current_time = js_sys::Date::now() as i64;
 
-        #[cfg(not(feature = "wasm"))]
-        let current_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64;
+        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+        let current_time = {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64
+        };
 
         current_time
     };
 
-    let modified_time = schematic.metadata.modified.unwrap_or(created_time as u64) as i64;
+    // Use existing modified timestamp or fall back to creation time
+    let modified = schematic.metadata.modified.unwrap_or(now as u64) as i64;
 
-    metadata.insert("TimeCreated", NbtTag::Long(created_time));
-    metadata.insert("TimeModified", NbtTag::Long(modified_time));
+    metadata.insert("TimeCreated", NbtTag::Long(now));
+    metadata.insert("TimeModified", NbtTag::Long(modified));
 
+    // Rest of the function remains the same...
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
     let mut enclosing_size = NbtCompound::new();
@@ -114,7 +120,6 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
 
     metadata
 }
-
 fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
     let mut regions = NbtCompound::new();
 
@@ -447,7 +452,8 @@ mod tests {
     #[test]
     fn test_simple_litematic() {
         let mut schematic = UniversalSchematic::new("Simple Cube".to_string());
-
+        schematic.metadata.created = Some(1000);
+        schematic.metadata.modified = Some(2000);
         // Create a 3x3x3 cube
         for x in 0..3 {
             for y in 0..3 {
@@ -484,6 +490,8 @@ mod tests {
     #[test]
     fn test_litematic_roundtrip() {
         let mut original_schematic = UniversalSchematic::new("Test Schematic".to_string());
+        original_schematic.metadata.created = Some(1000);
+        original_schematic.metadata.modified = Some(2000);
         let mut region = Region::new("TestRegion".to_string(), (0, 0, 0), (2, 2, 2));
 
         let stone = BlockState::new("minecraft:stone".to_string());

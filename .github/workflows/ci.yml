@@ -10,7 +10,7 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # Manual trigger option
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,10 +25,10 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4 # Using latest major version
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      # ... (rest of check-version job is the same) ...
+
       - name: Get current version
         id: version
         run: |
@@ -39,25 +39,18 @@ jobs:
       - name: Check if version changed
         id: check
         run: |
-          # Only run this check if we're on the main branch
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" =~ ^refs/heads/(main|master)$ ]]; then
-            git fetch
-          
-            # Check if Cargo.toml was modified in the last commit
             if git diff HEAD^ HEAD --name-only | grep -q "Cargo.toml"; then
-              # Get old version
               OLD_VERSION=$(git show HEAD^:Cargo.toml | grep -m1 'version = ' | cut -d '"' -f2)
               CURRENT_VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d '"' -f2)
-          
               echo "Old version: $OLD_VERSION"
               echo "Current version: $CURRENT_VERSION"
-          
               if [[ "$OLD_VERSION" != "$CURRENT_VERSION" ]]; then
                 echo "should_release=true" >> $GITHUB_OUTPUT
                 echo "Version was bumped from $OLD_VERSION to $CURRENT_VERSION. Will trigger release."
               else
                 echo "should_release=false" >> $GITHUB_OUTPUT
-                echo "Version unchanged."
+                echo "Version unchanged in Cargo.toml."
               fi
             else
               echo "should_release=false" >> $GITHUB_OUTPUT
@@ -73,13 +66,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1 # This action is mature, v1 is fine
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
       - name: Cache dependencies
-        uses: actions/cache@v4 # Using latest major version
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -88,7 +81,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Run tests
         run: cargo test --all-features
-      # ... (clippy remains the same) ...
+  #      - name: Run clippy
+  #        run: cargo clippy -- -D warnings
 
   build:
     needs: [test]
@@ -119,9 +113,9 @@ jobs:
           chmod +x ./build-wasm.sh
           ./build-wasm.sh
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4 # Upgraded to v4
+        uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts # Explicit name still good practice
+          name: build-artifacts
           path: |
             target/release/libnucleation.*
             pkg/
@@ -132,7 +126,6 @@ jobs:
     if: needs.check-version.outputs.should_release == 'true'
     permissions:
       contents: write
-      # packages: write # If needed
     steps:
       - uses: actions/checkout@v4
       - name: Set up Rust
@@ -142,23 +135,21 @@ jobs:
           toolchain: stable
           override: true
       - name: Download artifacts
-        uses: actions/download-artifact@v4 # Upgraded to v4
+        uses: actions/download-artifact@v4
         with:
-          name: build-artifacts # Name must match upload if specified there
+          name: build-artifacts
       - name: Publish to crates.io
-        uses: actions-rs/cargo@v1 # This action is mature, v1 is fine
+        uses: actions-rs/cargo@v1
         with:
           command: publish
           args: --token ${{ secrets.CRATES_IO_TOKEN }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x' # Or '20.x' or 'lts/*'
+          node-version: '18.x'
           registry-url: 'https://registry.npmjs.org'
-      # ... (Prepare npm package step is the same) ...
       - name: Prepare npm package
         run: |
-          # Create a simple README for npm if it doesn't exist
           if [ ! -f "pkg/README.md" ]; then
             echo "# Nucleation" > pkg/README.md
             echo "" >> pkg/README.md
@@ -166,11 +157,14 @@ jobs:
             echo "" >> pkg/README.md
             echo "See [GitHub Repository](https://github.com/Schem-at/Nucleation) for full documentation." >> pkg/README.md
           fi
-          
-          # Update package.json
+          if [ ! -f "pkg/package.json" ]; then
+            echo "Error: pkg/package.json not found after downloading artifacts. Ensure it's created and uploaded."
+            exit 1
+          fi
           node -e "
             const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./pkg/package.json', 'utf8'));
+            const pkgJsonPath = './pkg/package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
             pkg.version = '${{ needs.check-version.outputs.version }}';
             pkg.repository = {
               type: 'git',
@@ -181,14 +175,15 @@ jobs:
             pkg.author = 'Nano <nano@schem.at>';
             pkg.license = 'MIT OR Apache-2.0';
             pkg.homepage = 'https://github.com/Schem-at/Nucleation';
-            fs.writeFileSync('./pkg/package.json', JSON.stringify(pkg, null, 2));
+            fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2));
+            console.log('Updated pkg/package.json with version ${{ needs.check-version.outputs.version }} and other details.');
           "
       - name: Publish to npm
         run: cd pkg && npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2 # Upgraded to v2
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
           name: Release v${{ needs.check-version.outputs.version }}

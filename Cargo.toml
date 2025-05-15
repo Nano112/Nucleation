@@ -1,6 +1,6 @@
 [package]
 name = "nucleation"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
 authors = ["Nano nano@schem.at"]
@@ -38,7 +38,6 @@ log = "0.4.22"
 console = "0.15.8"
 
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-hematite-nbt = "*"
 tracing = "0.1.40"
 thiserror = "1.0.63"
 

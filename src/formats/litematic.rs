@@ -77,12 +77,26 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
     metadata.insert("Description", NbtTag::String(schematic.metadata.description.clone().unwrap_or_default()));
     metadata.insert("Author", NbtTag::String(schematic.metadata.author.clone().unwrap_or_default()));
 
-    #[cfg(feature = "wasm")]
-    let now = (js_sys::Date::now() as i64);
-    #[cfg(not(feature = "wasm"))]
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
-    metadata.insert("TimeCreated", NbtTag::Long(schematic.metadata.created.unwrap_or(now as u64) as i64));
-    metadata.insert("TimeModified", NbtTag::Long(schematic.metadata.modified.unwrap_or(now as u64) as i64));
+    let created_time = if let Some(time) = schematic.metadata.created {
+        time as i64
+    } else {
+        // Generate current time based on platform
+        #[cfg(feature = "wasm")]
+        let current_time = js_sys::Date::now() as i64;
+
+        #[cfg(not(feature = "wasm"))]
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        current_time
+    };
+
+    let modified_time = schematic.metadata.modified.unwrap_or(created_time as u64) as i64;
+
+    metadata.insert("TimeCreated", NbtTag::Long(created_time));
+    metadata.insert("TimeModified", NbtTag::Long(modified_time));
 
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
@@ -100,6 +114,7 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
 
     metadata
 }
+
 fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
     let mut regions = NbtCompound::new();
 

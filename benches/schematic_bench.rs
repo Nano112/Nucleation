@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use minecraft_schematic_utils::{BlockState, Region, UniversalSchematic};
+use nucleation::{BlockState, Region, UniversalSchematic};
 
 fn benchmark_schematic_creation(c: &mut Criterion) {
     c.bench_function("create schematic", |b| {

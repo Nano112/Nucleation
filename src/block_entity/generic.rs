@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use quartz_nbt::NbtCompound;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use crate::entity::Entity;
+use serde::{Deserialize, Serialize};
 use crate::item::ItemStack;
 use crate::utils::{NbtMap, NbtValue};
 

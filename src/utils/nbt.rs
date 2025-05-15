@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use quartz_nbt::{self, NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
-use quartz_nbt::{self, NbtTag, NbtCompound, NbtStructureError};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NbtValue {
@@ -20,6 +20,12 @@ pub enum NbtValue {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NbtMap(HashMap<String, NbtValue>);
+
+impl Default for NbtMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl NbtMap {
     pub fn new() -> Self {
@@ -50,7 +56,6 @@ impl NbtMap {
         self.0.iter_mut()
     }
 
-
     pub fn from_quartz_nbt(compound: &NbtCompound) -> Self {
         let mut map = NbtMap::new();
         for (key, value) in compound.inner().iter() {
@@ -59,8 +64,6 @@ impl NbtMap {
         }
         map
     }
-
-
 
     pub fn to_quartz_nbt(&self) -> NbtCompound {
         let mut compound = NbtCompound::new();
@@ -71,12 +74,12 @@ impl NbtMap {
     }
 
     pub fn to_nbt_value_map(&self) -> HashMap<String, nbt::Value> {
-        self.iter().map(|(key, value)| {
-            (key.clone(), value.to_nbt_value())  // Convert NbtValue to nbt::Value
-        }).collect()
+        self.iter()
+            .map(|(key, value)| {
+                (key.clone(), value.to_nbt_value()) // Convert NbtValue to nbt::Value
+            })
+            .collect()
     }
-
-
 }
 
 impl IntoIterator for NbtMap {
@@ -106,7 +109,6 @@ impl<'a> IntoIterator for &'a mut NbtMap {
     }
 }
 
-
 // Conversion functions
 impl NbtValue {
     pub fn from_quartz_nbt(tag: &NbtTag) -> Self {
@@ -126,8 +128,6 @@ impl NbtValue {
         }
     }
 
-
-
     pub fn to_quartz_nbt(&self) -> NbtTag {
         match self {
             NbtValue::Byte(v) => NbtTag::Byte(*v),
@@ -138,7 +138,9 @@ impl NbtValue {
             NbtValue::Double(v) => NbtTag::Double(*v),
             NbtValue::ByteArray(v) => NbtTag::ByteArray(v.clone()),
             NbtValue::String(v) => NbtTag::String(v.clone()),
-            NbtValue::List(v) => NbtTag::List(quartz_nbt::NbtList::from(v.iter().map(|x| x.to_quartz_nbt()).collect::<Vec<_>>())),
+            NbtValue::List(v) => NbtTag::List(quartz_nbt::NbtList::from(
+                v.iter().map(|x| x.to_quartz_nbt()).collect::<Vec<_>>(),
+            )),
             NbtValue::Compound(v) => NbtTag::Compound(v.to_quartz_nbt()),
             NbtValue::IntArray(v) => NbtTag::IntArray(v.clone()),
             NbtValue::LongArray(v) => NbtTag::LongArray(v.clone()),
@@ -155,13 +157,14 @@ impl NbtValue {
             NbtValue::Double(v) => nbt::Value::Double(*v),
             NbtValue::ByteArray(v) => nbt::Value::ByteArray(v.clone()),
             NbtValue::String(v) => nbt::Value::String(v.clone()),
-            NbtValue::List(v) => nbt::Value::List(v.iter().map(|item| item.to_nbt_value()).collect()),
+            NbtValue::List(v) => {
+                nbt::Value::List(v.iter().map(|item| item.to_nbt_value()).collect())
+            }
             NbtValue::Compound(v) => nbt::Value::Compound(v.to_nbt_value_map()), // Recursively convert compound maps
             NbtValue::IntArray(v) => nbt::Value::IntArray(v.clone()),
             NbtValue::LongArray(v) => nbt::Value::LongArray(v.clone()),
         }
     }
-
 
     pub fn as_string(&self) -> Option<&String> {
         if let NbtValue::String(s) = self {
@@ -205,7 +208,6 @@ impl NbtValue {
     }
 }
 
-
 #[cfg(feature = "wasm")]
 mod wasm {
     use super::*;
@@ -228,7 +230,7 @@ mod wasm {
                 NbtValue::Byte(v) => JsValue::from(*v),
                 NbtValue::Short(v) => JsValue::from(*v),
                 NbtValue::Int(v) => JsValue::from(*v),
-                NbtValue::Long(v) => JsValue::from(*v as f64),  // JavaScript doesn't have 64-bit integers
+                NbtValue::Long(v) => JsValue::from(*v as f64), // JavaScript doesn't have 64-bit integers
                 NbtValue::Float(v) => JsValue::from(*v),
                 NbtValue::Double(v) => JsValue::from(*v),
                 NbtValue::ByteArray(v) => {
@@ -237,7 +239,7 @@ mod wasm {
                         arr.push(&JsValue::from(byte));
                     }
                     arr.into()
-                },
+                }
                 NbtValue::String(v) => JsValue::from_str(v),
                 NbtValue::List(v) => {
                     let arr = Array::new();
@@ -245,7 +247,7 @@ mod wasm {
                         arr.push(&item.to_js_value());
                     }
                     arr.into()
-                },
+                }
                 NbtValue::Compound(v) => v.to_js_value(),
                 NbtValue::IntArray(v) => {
                     let arr = Array::new();
@@ -253,16 +255,15 @@ mod wasm {
                         arr.push(&JsValue::from(int));
                     }
                     arr.into()
-                },
+                }
                 NbtValue::LongArray(v) => {
                     let arr = Array::new();
                     for &long in v {
-                        arr.push(&JsValue::from(long as f64));  // JavaScript doesn't have 64-bit integers
+                        arr.push(&JsValue::from(long as f64)); // JavaScript doesn't have 64-bit integers
                     }
                     arr.into()
-                },
+                }
             }
         }
-
     }
 }

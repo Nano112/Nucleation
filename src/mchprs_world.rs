@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use mchprs_blocks::{block_entities::BlockEntity, blocks::Block, BlockPos};
 use mchprs_world::{storage::Chunk, TickEntry, TickPriority, World};
 use mchprs_redpiler::{BackendVariant, Compiler, CompilerOptions, };
-use nbt::{Map, Value};
 use crate::block_entity::BlockEntity as UtilBlockEntity;
 use crate::UniversalSchematic;
 use thiserror::Error;

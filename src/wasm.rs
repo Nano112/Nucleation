@@ -9,12 +9,9 @@ use crate::{
     formats::{litematic, schematic},
     print_utils::{format_schematic as print_schematic, format_json_schematic as print_json_schematic},
     block_position::BlockPosition,
-    mchprs_world::MchprsWorld,
 };
 use std::collections::HashMap;
-use mchprs_blocks::BlockPos;
 use crate::bounding_box::BoundingBox;
-use crate::mchprs_world::generate_truth_table;
 use crate::universal_schematic::ChunkLoadingStrategy;
 
 #[wasm_bindgen(start)]
@@ -26,10 +23,6 @@ pub fn start() {
 #[wasm_bindgen]
 pub struct SchematicWrapper(pub(crate) UniversalSchematic);
 
-#[wasm_bindgen]
-pub struct MchprsWorldWrapper {
-    world: MchprsWorld,
-}
 
 #[wasm_bindgen]
 pub struct BlockStateWrapper(pub(crate) BlockState);
@@ -42,10 +35,7 @@ impl SchematicWrapper {
     pub fn new() -> Self {
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
-
-    pub fn create_simulation_world(&self) -> MchprsWorldWrapper {
-        MchprsWorldWrapper::new(self).unwrap()
-    }
+    
 
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
@@ -403,67 +393,6 @@ impl SchematicWrapper {
 
 }
 
-
-#[wasm_bindgen]
-impl MchprsWorldWrapper {
-    #[wasm_bindgen(constructor)]
-    pub fn new(schematic: &SchematicWrapper) -> Result<MchprsWorldWrapper, JsValue> {
-
-        let world = MchprsWorld::new(schematic.0.clone())
-            .map_err(|e| JsValue::from_str(&format!("Failed to create MchprsWorld: {}", e)))?;
-
-        Ok(MchprsWorldWrapper { world })
-    }
-
-    pub fn on_use_block(&mut self, x: i32, y: i32, z: i32) {
-        self.world.on_use_block(BlockPos::new(x, y, z));
-    }
-
-    pub fn tick(&mut self, number_of_ticks: u32) {
-        self.world.tick(number_of_ticks);
-    }
-
-    pub fn flush(&mut self) {
-        self.world.flush();
-    }
-
-    pub fn is_lit(&self, x: i32, y: i32, z: i32) -> bool {
-        self.world.is_lit(BlockPos::new(x, y, z))
-    }
-
-    pub fn get_lever_power(&self, x: i32, y: i32, z: i32) -> bool {
-        self.world.get_lever_power(BlockPos::new(x, y, z))
-    }
-
-    pub fn get_redstone_power(&self, x: i32, y: i32, z: i32) -> u8 {
-        self.world.get_redstone_power(BlockPos::new(x, y, z))
-    }
-
-    pub fn get_truth_table(&self) -> JsValue {
-        // Get the truth table result from the Rust implementation
-        let truth_table = generate_truth_table(&self.world.schematic);
-
-        // Create a JavaScript array to hold the results
-        let result = js_sys::Array::new();
-        // Convert each row in the truth table to a JavaScript object
-        for row in truth_table {
-            let row_obj = js_sys::Object::new();
-
-            // Add each entry in the row to the object
-            for (key, value) in row {
-                js_sys::Reflect::set(
-                    &row_obj,
-                    &JsValue::from_str(&key),
-                    &JsValue::from_bool(value)
-                ).unwrap();
-            }
-
-            result.push(&row_obj);
-        }
-
-        result.into()
-    }
-}
 
 
 #[wasm_bindgen]

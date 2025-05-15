@@ -10,7 +10,6 @@ mod formats;
 mod print_utils;
 mod bounding_box;
 mod metadata;
-mod mchprs_world;
 mod block_position;
 pub mod utils;
 mod item;

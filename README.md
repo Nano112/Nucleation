@@ -13,7 +13,6 @@ Nucleation is a high-performance Minecraft schematic parser and utility library 
 - Parse and manipulate multiple schematic formats (.schematic, .litematic, etc.)
 - High-performance Rust core with WebAssembly bindings
 - Chunk-based loading for progressive rendering
-- Redstone circuit analysis and simulation using MCHPRS
 - Block entity support (chests, signs, etc.)
 - Designed for integration with [Cubane](https://github.com/Nano112/cubane) for 3D visualization
 
@@ -124,11 +123,6 @@ for (const block of parser.blocks()) {
 
 This project is available under the MIT or Apache-2.0 license.
 
-### Acknowledgements
-
-Nucleation incorporates components from:
-- [MCHPRS](https://github.com/MCHPRS/MCHPRS) (MIT License)
-- [hematite_nbt](https://github.com/StackDoubleFlow/hematite_nbt) (MIT License)
 
 ## Development
 

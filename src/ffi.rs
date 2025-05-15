@@ -8,11 +8,8 @@ use crate::{
     formats::{litematic, schematic},
     print_utils::{format_schematic, format_json_schematic},
     block_position::BlockPosition,
-    mchprs_world::MchprsWorld,
     bounding_box::BoundingBox,
 };
-use mchprs_blocks::BlockPos;
-use crate::mchprs_world::generate_truth_table;
 
 // C-compatible data structures
 #[repr(C)]
@@ -42,7 +39,6 @@ pub struct Position {
 
 // Wrapper structs with opaque pointers
 pub struct SchematicWrapper(*mut UniversalSchematic);
-pub struct MchprsWorldWrapper(*mut MchprsWorld);
 pub struct BlockStateWrapper(*mut BlockState);
 
 // Helper functions for memory management
@@ -669,156 +665,8 @@ pub extern "C" fn schematic_get_block_entity(
 }
 
 // Simulation support
-#[no_mangle]
-pub extern "C" fn mchprs_world_new(
-    schematic: *const SchematicWrapper,
-) -> *mut MchprsWorldWrapper {
-    if schematic.is_null() {
-        return ptr::null_mut();
-    }
 
-    unsafe {
-        let wrapper = &*schematic;
-        let schematic_ref = &*wrapper.0;
-        
-        match MchprsWorld::new(schematic_ref.clone()) {
-            Ok(world) => {
-                let world_wrapper = MchprsWorldWrapper(Box::into_raw(Box::new(world)));
-                Box::into_raw(Box::new(world_wrapper))
-            },
-            Err(_) => ptr::null_mut(),
-        }
-    }
-}
 
-#[no_mangle]
-pub extern "C" fn mchprs_world_free(world: *mut MchprsWorldWrapper) {
-    if !world.is_null() {
-        unsafe {
-            let wrapper = Box::from_raw(world);
-            let _ = Box::from_raw(wrapper.0);
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_on_use_block(
-    world: *mut MchprsWorldWrapper,
-    x: c_int,
-    y: c_int,
-    z: c_int,
-) {
-    if world.is_null() {
-        return;
-    }
-
-    unsafe {
-        let wrapper = &mut *world;
-        let world_ref = &mut *wrapper.0;
-        
-        world_ref.on_use_block(BlockPos::new(x, y, z));
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_tick(
-    world: *mut MchprsWorldWrapper,
-    number_of_ticks: c_uint,
-) {
-    if world.is_null() {
-        return;
-    }
-
-    unsafe {
-        let wrapper = &mut *world;
-        let world_ref = &mut *wrapper.0;
-        
-        world_ref.tick(number_of_ticks);
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_flush(
-    world: *mut MchprsWorldWrapper,
-) {
-    if world.is_null() {
-        return;
-    }
-
-    unsafe {
-        let wrapper = &mut *world;
-        let world_ref = &mut *wrapper.0;
-        
-        world_ref.flush();
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_is_lit(
-    world: *const MchprsWorldWrapper,
-    x: c_int,
-    y: c_int,
-    z: c_int,
-) -> c_int {
-    if world.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let wrapper = &*world;
-        let world_ref = &*wrapper.0;
-        
-        if world_ref.is_lit(BlockPos::new(x, y, z)) {
-            1
-        } else {
-            0
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_get_lever_power(
-    world: *const MchprsWorldWrapper,
-    x: c_int,
-    y: c_int,
-    z: c_int,
-) -> c_int {
-    if world.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let wrapper = &*world;
-        let world_ref = &*wrapper.0;
-        
-        if world_ref.get_lever_power(BlockPos::new(x, y, z)) {
-            1
-        } else {
-            0
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn mchprs_world_get_redstone_power(
-    world: *const MchprsWorldWrapper,
-    x: c_int,
-    y: c_int,
-    z: c_int,
-) -> c_uchar {
-    if world.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let wrapper = &*world;
-        let world_ref = &*wrapper.0;
-        
-        world_ref.get_redstone_power(BlockPos::new(x, y, z))
-    }
-}
-
-// BlockState handling
 #[no_mangle]
 pub extern "C" fn blockstate_new(
     name: *const c_char,

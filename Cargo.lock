@@ -57,15 +57,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,7 +212,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "is-terminal",
- "itertools 0.10.5",
+ "itertools",
  "num-traits",
  "once_cell",
  "oorandom",
@@ -242,7 +233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -289,30 +280,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
-name = "enum_dispatch"
-version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa18ce2bc66555b3218614519ac839ddb759a7d6720732f979ef8d13be147ecd"
-dependencies = [
- "once_cell",
- "proc-macro2",
- "quote",
- "syn 2.0.77",
-]
-
-[[package]]
-name = "equivalent"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
-
-[[package]]
-name = "fixedbitset"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
-
-[[package]]
 name = "flate2"
 version = "1.0.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -346,15 +313,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "hashbrown"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
-
-[[package]]
 name = "hematite-nbt"
 version = "0.5.2"
-source = "git+https://github.com/StackDoubleFlow/hematite_nbt#8a33b2187443ee2f8641243b19987a4b6caea8c3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670d0784ee67cfb57393dc1837867d2951f9a59ca7db99a653499c854f745739"
 dependencies = [
  "byteorder",
  "cesu8",
@@ -392,25 +354,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indexmap"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
-dependencies = [
- "equivalent",
- "hashbrown",
-]
-
-[[package]]
-name = "instant"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,15 +369,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -480,75 +414,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
 dependencies = [
  "regex-automata 0.1.10",
-]
-
-[[package]]
-name = "mchprs_blocks"
-version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "hematite-nbt",
- "mchprs_proc_macros",
- "mchprs_utils",
- "serde",
-]
-
-[[package]]
-name = "mchprs_proc_macros"
-version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "mchprs_redpiler"
-version = "0.1.0"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "console",
- "enum_dispatch",
- "instant",
- "itertools 0.13.0",
- "mchprs_blocks",
- "mchprs_redstone",
- "mchprs_world",
- "petgraph",
- "redpiler_graph",
- "rustc-hash",
- "serde_json",
- "smallvec",
- "tracing",
- "web-sys",
-]
-
-[[package]]
-name = "mchprs_redstone"
-version = "0.1.0"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "mchprs_blocks",
- "mchprs_world",
- "rustc-hash",
- "tracing",
-]
-
-[[package]]
-name = "mchprs_utils"
-version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-
-[[package]]
-name = "mchprs_world"
-version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "hematite-nbt",
- "itertools 0.13.0",
- "mchprs_blocks",
- "rustc-hash",
- "serde",
 ]
 
 [[package]]
@@ -598,10 +463,6 @@ dependencies = [
  "hematite-nbt",
  "js-sys",
  "log",
- "mchprs_blocks",
- "mchprs_redpiler",
- "mchprs_redstone",
- "mchprs_world",
  "num-complex",
  "quartz_nbt",
  "rand",
@@ -651,16 +512,6 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
-
-[[package]]
-name = "petgraph"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
-dependencies = [
- "fixedbitset",
- "indexmap",
-]
 
 [[package]]
 name = "pin-project-lite"
@@ -798,15 +649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redpiler_graph"
-version = "0.4.1"
-source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
-dependencies = [
- "bincode",
- "serde",
-]
-
-[[package]]
 name = "regex"
 version = "1.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -849,12 +691,6 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
-
-[[package]]
-name = "rustc-hash"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7fb8039b3032c191086b10f11f319a6e99e1e82889c5cc6046f515c9db1d497"
 
 [[package]]
 name = "rustversion"

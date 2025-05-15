@@ -36,10 +36,7 @@ quartz_nbt = "0.2.9"
 flate2 = "1.0.32"
 log = "0.4.22"
 console = "0.15.8"
-mchprs_redpiler = { git = "https://github.com/Nano112/MCHPRS.git" }
-mchprs_redstone = { git = "https://github.com/Nano112/MCHPRS.git" }
-mchprs_world = { git = "https://github.com/Nano112/MCHPRS.git", default-features = false }
-mchprs_blocks = { git = "https://github.com/Nano112/MCHPRS.git" }
+
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hematite-nbt = "*"
 tracing = "0.1.40"
@@ -53,8 +50,6 @@ web-sys = { version = "0.3", optional = true, features = ["console"] }
 rand = "0.8.5"
 getrandom = { version = "0.2", features = ["js"] }
 
-[patch.crates-io]
-hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

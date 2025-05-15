@@ -28,10 +28,18 @@ impl BlockEntity {
         self
     }
 
-    pub fn to_hashmap(&self) -> HashMap<String, nbt::Value> {
-        self.nbt.iter().map(|(key, value)| {
-            (key.clone(), value.to_nbt_value())  // Use a helper function to convert NbtValue to nbt::Value
-        }).collect()
+    pub fn to_hashmap(&self) -> HashMap<String, NbtValue> {
+        let mut map = HashMap::new();
+        map.insert("Id".to_string(), NbtValue::String(self.id.clone()));
+        map.insert("Pos".to_string(), NbtValue::IntArray(vec![
+            self.position.0,
+            self.position.1,
+            self.position.2
+        ]));
+        for (key, value) in &self.nbt {
+            map.insert(key.clone(), value.clone());
+        }
+        map
     }
 
 

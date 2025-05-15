@@ -73,13 +73,6 @@ impl NbtMap {
         compound
     }
 
-    pub fn to_nbt_value_map(&self) -> HashMap<String, nbt::Value> {
-        self.iter()
-            .map(|(key, value)| {
-                (key.clone(), value.to_nbt_value()) // Convert NbtValue to nbt::Value
-            })
-            .collect()
-    }
 }
 
 impl IntoIterator for NbtMap {
@@ -147,24 +140,6 @@ impl NbtValue {
         }
     }
 
-    pub fn to_nbt_value(&self) -> nbt::Value {
-        match self {
-            NbtValue::Byte(v) => nbt::Value::Byte(*v),
-            NbtValue::Short(v) => nbt::Value::Short(*v),
-            NbtValue::Int(v) => nbt::Value::Int(*v),
-            NbtValue::Long(v) => nbt::Value::Long(*v),
-            NbtValue::Float(v) => nbt::Value::Float(*v),
-            NbtValue::Double(v) => nbt::Value::Double(*v),
-            NbtValue::ByteArray(v) => nbt::Value::ByteArray(v.clone()),
-            NbtValue::String(v) => nbt::Value::String(v.clone()),
-            NbtValue::List(v) => {
-                nbt::Value::List(v.iter().map(|item| item.to_nbt_value()).collect())
-            }
-            NbtValue::Compound(v) => nbt::Value::Compound(v.to_nbt_value_map()), // Recursively convert compound maps
-            NbtValue::IntArray(v) => nbt::Value::IntArray(v.clone()),
-            NbtValue::LongArray(v) => nbt::Value::LongArray(v.clone()),
-        }
-    }
 
     pub fn as_string(&self) -> Option<&String> {
         if let NbtValue::String(s) = self {

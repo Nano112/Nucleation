@@ -518,6 +518,11 @@ mod tests {
 
     #[test]
     fn test_conversion() {
+        let output_dir_path = Path::new("tests/output");
+        if !output_dir_path.exists() {
+            fs::create_dir_all(output_dir_path)
+                .expect("Failed to create output directory 'tests/output'");
+        }
         let schem_name = "tests/samples/cutecounter.schem";
         let output_litematic_name = "tests/output/cutecounter.litematic";
         let output_schematic_name = "tests/output/cutecounter.schem";

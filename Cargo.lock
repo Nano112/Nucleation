@@ -483,15 +483,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mc_schems"
-version = "0.1.0"
-source = "git+https://github.com/StackDoubleFlow/mc_schems.git#6b0d3dab037cc81c1d19b467d0ca4ca05e1e7895"
-dependencies = [
- "hematite-nbt",
- "thiserror",
-]
-
-[[package]]
 name = "mchprs_blocks"
 version = "0.4.1"
 source = "git+https://github.com/Nano112/MCHPRS.git#eeb89c7ee5df82fa2094390a363254638a38cfb3"
@@ -607,7 +598,6 @@ dependencies = [
  "hematite-nbt",
  "js-sys",
  "log",
- "mc_schems",
  "mchprs_blocks",
  "mchprs_redpiler",
  "mchprs_redstone",

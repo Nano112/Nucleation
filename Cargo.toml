@@ -40,7 +40,6 @@ mchprs_redpiler = { git = "https://github.com/Nano112/MCHPRS.git" }
 mchprs_redstone = { git = "https://github.com/Nano112/MCHPRS.git" }
 mchprs_world = { git = "https://github.com/Nano112/MCHPRS.git", default-features = false }
 mchprs_blocks = { git = "https://github.com/Nano112/MCHPRS.git" }
-mc_schems = { git = "https://github.com/StackDoubleFlow/mc_schems.git" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hematite-nbt = "*"
 tracing = "0.1.40"

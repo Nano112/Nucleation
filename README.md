@@ -128,7 +128,6 @@ This project is available under the MIT or Apache-2.0 license.
 
 Nucleation incorporates components from:
 - [MCHPRS](https://github.com/MCHPRS/MCHPRS) (MIT License)
-- [mc_schems](https://github.com/StackDoubleFlow/mc_schems) (MIT License)
 - [hematite_nbt](https://github.com/StackDoubleFlow/hematite_nbt) (MIT License)
 
 ## Development

@@ -283,7 +283,7 @@ impl SchematicWrapper {
     }
 
     pub fn chunks(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Array {
-        self.0.iter_chunks(chunk_width, chunk_height, chunk_length, None)
+        self.0.iter_chunks(chunk_width, chunk_height, chunk_length, Some(ChunkLoadingStrategy::BottomUp))
             .map(|chunk| {
                 let chunk_obj = js_sys::Object::new();
                 js_sys::Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();

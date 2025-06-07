@@ -1,6 +1,6 @@
 #!/bin/bash
 # Production-ready build script for the 'nucleation' WASM package.
-# This script supports both modern bundlers (like Vite) and direct CDN usage.
+# This script supports bundlers, Node.js, and direct CDN usage with universal initialization.
 set -e
 
 # --- Configuration ---
@@ -17,14 +17,62 @@ echo "INFO: Building WASM package with --target web for explicit initialization.
 wasm-pack build --target web --out-dir pkg --out-name "${OUT_NAME}" --features wasm
 echo "INFO: Base package created successfully."
 
+# --- Create universal init wrapper ---
+echo "INFO: Creating universal init wrapper for cross-platform compatibility..."
+
+# First, backup the original wasm-pack generated file
+mv pkg/"${OUT_NAME}.js" pkg/"${OUT_NAME}-original.js"
+
+# Create the universal wrapper
+cat << 'EOF' > pkg/"${OUT_NAME}.js"
+// Universal WASM initializer that works in both Node.js and browsers
+import init_wasm from './nucleation-original.js';
+
+export default async function init(input) {
+  // If input is provided, use it directly (manual override)
+  if (input !== undefined) {
+    return await init_wasm(input);
+  }
+
+  // Auto-detect environment
+  const isNode = typeof process !== 'undefined' && process.versions?.node;
+
+  if (isNode) {
+    // Node.js: read the WASM file directly
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const url = await import('url');
+
+      const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+      const wasmPath = path.join(__dirname, 'nucleation_bg.wasm');
+      const wasmBytes = fs.readFileSync(wasmPath);
+
+      return await init_wasm(wasmBytes);
+    } catch (error) {
+      console.warn('Failed to load WASM in Node.js, trying default init:', error.message);
+      return await init_wasm();
+    }
+  } else {
+    // Browser: use default fetch behavior
+    return await init_wasm();
+  }
+}
+
+// Re-export everything from the original module
+export * from './nucleation-original.js';
+EOF
+
+echo "INFO: Universal init wrapper created."
+
 # --- Create a dedicated loader for CDN usage ---
 echo "INFO: Creating custom loader for CDN usage (pkg/${CDN_LOADER_FILENAME})..."
 cat << EOF > pkg/"${CDN_LOADER_FILENAME}"
 // This loader is for use in a browser via <script type="module"> from a CDN.
 // It ensures that the .wasm file is loaded from the correct relative path.
 
-// Import the real init function and all the classes from the main module.
-import init, * as wasm from './${OUT_NAME}.js';
+// Import the real init function and all the classes from the original module.
+import init, * as wasm from './${OUT_NAME}-original.js';
 
 // The default export is a new initializer function for CDN use.
 // It calls the real 'init' but provides the URL to the .wasm file.
@@ -34,7 +82,7 @@ export default async function() {
 }
 
 // Re-export all the named classes (SchematicWrapper, etc.).
-export * from './${OUT_NAME}.js';
+export * from './${OUT_NAME}-original.js';
 EOF
 echo "INFO: CDN loader created."
 
@@ -49,9 +97,10 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 // Define all files to be included in the npm package.
 pkg.files = [
     '${OUT_NAME}.js',
+    '${OUT_NAME}-original.js',
     '${OUT_NAME}.d.ts',
     '${OUT_NAME}_bg.wasm',
-    '${OUT_A-NAME}_bg.d.ts',
+    '${OUT_NAME}_bg.d.ts',
     '${CDN_LOADER_FILENAME}',
     'README.md'
 ];
@@ -65,7 +114,7 @@ pkg.name = '${CRATE_NAME}';
 
 // Use the 'exports' field for modern, explicit module resolution.
 pkg.exports = {
-    // The main entry for bundlers: 'import init from \"nucleation\"'
+    // The main entry for bundlers and Node.js: 'import init from \"nucleation\"'
     '.': {
         'import': './${OUT_NAME}.js',
         'types': './${OUT_NAME}.d.ts'
@@ -107,18 +156,25 @@ echo "===================================================================="
 echo " ✅ BUILD COMPLETE"
 echo "===================================================================="
 echo
-echo " This package now supports two primary use cases:"
+echo " This package now supports three primary use cases:"
 echo
-echo " 1) For BUNDLERS (Vite, Webpack, etc.):"
-echo "    -------------------------------------"
+echo " 1) For BUNDLERS & NODE.JS (Universal - Auto-detects environment):"
+echo "    ---------------------------------------------------------------"
 echo "    import init, { SchematicWrapper } from '${CRATE_NAME}';"
-echo "    await init();"
+echo "    await init(); // Works in both Node.js and browsers automatically"
 echo "    const schematic = new SchematicWrapper();"
 echo
 echo " 2) For CDN (in a browser <script type=\"module\">):"
 echo "    ------------------------------------------------"
 echo "    import init, { SchematicWrapper } from 'https://cdn.jsdelivr.net/npm/${CRATE_NAME}@latest/${CDN_LOADER_FILENAME}';"
 echo "    await init();"
+echo "    const schematic = new SchematicWrapper();"
+echo
+echo " 3) For MANUAL WASM loading (advanced usage):"
+echo "    -------------------------------------------"
+echo "    import init, { SchematicWrapper } from '${CRATE_NAME}';"
+echo "    const wasmBytes = /* your WASM bytes */;"
+echo "    await init(wasmBytes);"
 echo "    const schematic = new SchematicWrapper();"
 echo
 echo "===================================================================="

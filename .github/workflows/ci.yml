@@ -105,6 +105,12 @@ jobs:
           cp -r pkg/* release-artifacts/
           cp target/release/libnucleation.* release-artifacts/ || true
           cp README.md LICENSE release-artifacts/
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts
+
 
   build-ffi:
     needs: test
@@ -130,6 +136,12 @@ jobs:
         run: |
           mkdir -p release-artifacts
           cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} release-artifacts/
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts
+
 
   publish:
     needs: [check-version, build, build-ffi]
@@ -137,6 +149,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # ✅ Download all artifacts into release-artifacts/
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
 
       - name: Publish to crates.io
         uses: actions-rs/cargo@v1

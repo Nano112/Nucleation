@@ -105,12 +105,11 @@ jobs:
           cp -r pkg/* release-artifacts/
           cp target/release/libnucleation.* release-artifacts/ || true
           cp README.md LICENSE release-artifacts/
-      - name: Upload release artifacts
+      - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
+          name: wasm-artifacts
           path: release-artifacts
-
 
   build-ffi:
     needs: test
@@ -139,7 +138,7 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
+          name: ffi-artifacts-${{ matrix.target }}
           path: release-artifacts
 
 
@@ -150,10 +149,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ Download all artifacts into release-artifacts/
-      - name: Download artifacts
+      - name: Download WASM artifacts
         uses: actions/download-artifact@v4
         with:
+          name: wasm-artifacts
+          path: release-artifacts
+
+      - name: Download FFI (x86_64-linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: ffi-artifacts-x86_64-unknown-linux-gnu
+          path: release-artifacts
+
+      - name: Download FFI (Intel macOS)
+        uses: actions/download-artifact@v4
+        with:
+          name: ffi-artifacts-x86_64-apple-darwin
+          path: release-artifacts
+
+      - name: Download FFI (Apple Silicon)
+        uses: actions/download-artifact@v4
+        with:
+          name: ffi-artifacts-aarch64-apple-darwin
           path: release-artifacts
 
       - name: Publish to crates.io

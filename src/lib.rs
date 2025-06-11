@@ -20,6 +20,8 @@ mod chunk;
 mod wasm;
 #[cfg(feature = "ffi")]
 pub mod ffi;
+#[cfg(feature = "python")]
+mod python;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;

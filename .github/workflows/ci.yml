@@ -120,6 +120,32 @@ jobs:
             target/release/libnucleation.*
             pkg/
 
+  build-ffi:
+    needs: [test]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: so
+          - os: macos-13  # Intel Mac
+            target: x86_64-apple-darwin
+            ext: dylib
+          - os: macos-14  # Apple Silicon
+            target: aarch64-apple-darwin
+            ext: dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build FFI library
+        run: cargo build --release --target ${{ matrix.target }} --features ffi
+      - name: Upload FFI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnucleation-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }}
   publish:
     needs: [check-version, build]
     runs-on: ubuntu-latest
@@ -182,6 +208,17 @@ jobs:
         run: cd pkg && npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install maturin
+        run: pip install maturin
+      - name: Publish to PyPI
+        run: maturin publish --features python --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -189,7 +226,4 @@ jobs:
           name: Release v${{ needs.check-version.outputs.version }}
           generate_release_notes: true
           files: |
-            target/release/libnucleation.*
-            pkg/*.wasm
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            release-artifacts/**/*

@@ -1,142 +1,169 @@
-# Nucleation
+# 🧬 Nucleation
 
-Nucleation is a high-performance Minecraft schematic parser and utility library written in Rust, with WebAssembly and FFI bindings for multiple environments.
+**Nucleation** is a high-performance Minecraft schematic engine written in Rust — with full support for **Rust**, **WebAssembly/JavaScript**, **Python**, and **FFI-based integrations** like **PHP** and **C**.
 
-[//]: # ([![Crates.io]&#40;https://img.shields.io/crates/v/nucleation.svg&#41;]&#40;https://crates.io/crates/nucleation&#41;)
+> Built for performance, portability, and parity across ecosystems.
 
-[//]: # ([![NPM Version]&#40;https://img.shields.io/npm/v/nucleation.svg&#41;]&#40;https://www.npmjs.com/package/nucleation&#41;)
+---
 
-[//]: # ([![MIT/Apache-2.0]&#40;https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg&#41;]&#40;LICENSE&#41;)
+[![Crates.io](https://img.shields.io/crates/v/nucleation.svg)](https://crates.io/crates/nucleation)
+[![npm](https://img.shields.io/npm/v/nucleation.svg)](https://www.npmjs.com/package/nucleation)
+[![PyPI](https://img.shields.io/pypi/v/nucleation.svg)](https://pypi.org/project/nucleation)
 
-## Features
+---
 
-- Parse and manipulate multiple schematic formats (.schematic, .litematic, etc.)
-- High-performance Rust core with WebAssembly bindings
-- Chunk-based loading for progressive rendering
-- Block entity support (chests, signs, etc.)
-- Designed for integration with [Cubane](https://github.com/Nano112/cubane) for 3D visualization
+## ✨ Features
 
-## Installation
+- ✅ Multi-format support: `.schematic`, `.litematic`, `.nbt`, etc.
+- 🧠 Memory-safe Rust core with zero-copy deserialization
+- 🌐 WASM module for browser + Node.js
+- 🐍 Native Python bindings (`pip install nucleation`)
+- ⚙️ C-compatible FFI for PHP, C, Go, etc.
+- 🔄 Feature parity across all interfaces
+- 📦 Binary builds for Linux, macOS, Windows (x86_64 + ARM64)
+- 🧱 Seamless integration with [Cubane](https://github.com/Nano112/cubane)
 
-### Rust
+---
+
+## 📦 Installation
+
+### 🔧 Rust
 
 ```bash
 cargo add nucleation
-```
+````
 
-### JavaScript/TypeScript (via npm)
+### 🌐 JavaScript / TypeScript (WASM)
 
 ```bash
 npm install nucleation
-# or
-yarn add nucleation
 ```
 
-## Usage Examples
-
-### JavaScript (WebAssembly)
-
-```javascript
-import { SchematicParser } from 'nucleation';
-
-// Load a schematic file
-const response = await fetch('example.litematic');
-const fileData = new Uint8Array(await response.arrayBuffer());
-
-// Parse the schematic
-const parser = new SchematicParser();
-await parser.fromData(fileData);
-
-// Get schematic dimensions
-const [width, height, depth] = parser.getDimensions();
-console.log(`Dimensions: ${width}x${height}x${depth}`);
-
-// Load blocks progressively in chunks
-const chunks = parser.chunksWithStrategy(
-  16, 16, 16,           // chunk size
-  "distance_to_camera", // loading strategy
-  camera.x, camera.y, camera.z
-);
-
-// With Cubane integration
-const renderer = new Cubane.Cubane();
-for (const chunk of chunks) {
-  for (const block of chunk.blocks) {
-    const mesh = await renderer.getBlockMesh(block.name);
-    mesh.position.set(block.x, block.y, block.z);
-    scene.add(mesh);
-  }
-}
-```
-
-### Rust
-
-```rust
-use nucleation::SchematicParser;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load a schematic file
-    let data = std::fs::read("example.litematic")?;
-    
-    // Parse the schematic
-    let parser = SchematicParser::new();
-    let schematic = parser.from_data(&data)?;
-    
-    // Get block information
-    let dimensions = schematic.get_dimensions();
-    println!("Dimensions: {}x{}x{}", dimensions[0], dimensions[1], dimensions[2]);
-    
-    // Iterate through blocks
-    for (pos, block) in schematic.iter_blocks() {
-        println!("Block at {},{},{}: {}", pos.x, pos.y, pos.z, block.name);
-    }
-    
-    Ok(())
-}
-```
-
-## Integration with Cubane
-
-Nucleation works seamlessly with [Cubane](https://github.com/Nano112/cubane) for 3D visualization, forming a complete solution for Minecraft schematic processing and rendering.
-
-```javascript
-import { SchematicParser } from 'nucleation';
-import { Cubane } from 'cubane';
-
-// Parse schematic with Nucleation
-const parser = new SchematicParser();
-await parser.fromData(fileData);
-
-// Render with Cubane
-const cubane = new Cubane.Cubane();
-// ... set up Three.js scene ...
-
-// Load and render blocks
-for (const block of parser.blocks()) {
-  const mesh = await cubane.getBlockMesh(block.name);
-  mesh.position.set(block.x, block.y, block.z);
-  scene.add(mesh);
-}
-```
-
-## License
-
-This project is available under the MIT or Apache-2.0 license.
-
-
-## Development
+### 🐍 Python
 
 ```bash
-# Build the Rust library
-cargo build --release
+pip install nucleation
+```
 
-# Build the WebAssembly package
-./build-wasm.sh
+### 🧩 C / PHP / FFI
 
-# Run tests
-cargo test
+Download prebuilt `.so` / `.dylib` / `.dll` from [Releases](https://github.com/Schem-at/Nucleation/releases)
+or build locally using:
+
+```bash
+./build-ffi.sh
 ```
 
 ---
 
-Created and maintained by [Nano](https://github.com/Nano112)
+## 🚀 Quick Examples
+
+### Rust
+
+```rust
+use nucleation::UniversalSchematic;
+
+let bytes = std::fs::read("example.litematic")?;
+let mut schematic = UniversalSchematic::new("my_schematic");
+schematic.load_from_data(&bytes)?;
+println!("{:?}", schematic.get_info());
+```
+
+📖 → [More in `examples/rust.md`](examples/rust.md)
+
+---
+
+### JavaScript (WASM)
+
+```ts
+import { SchematicParser } from "nucleation";
+
+const bytes = await fetch("example.litematic").then(r => r.arrayBuffer());
+const parser = new SchematicParser();
+await parser.fromData(new Uint8Array(bytes));
+
+console.log(parser.getDimensions());
+```
+
+📖 → [More in `examples/wasm.md`](examples/wasm.md)
+
+---
+
+### Python
+
+```python
+from nucleation import Schematic
+
+with open("example.litematic", "rb") as f:
+    data = f.read()
+
+schem = Schematic("my_schematic")
+schem.load_from_bytes(data)
+
+print(schem.get_info())
+```
+
+📖 → [More in `examples/python.md`](examples/python.md)
+
+---
+
+### FFI (PHP/C)
+
+```c
+#include "nucleation.h"
+
+SchematicHandle* handle = schematic_new("MySchem");
+schematic_load_data(handle, data_ptr, data_len);
+
+CSchematicInfo info;
+schematic_get_info(handle, &info);
+printf("Size: %dx%dx%d\n", info.width, info.height, info.depth);
+
+schematic_free(handle);
+```
+
+📖 → [More in `examples/ffi.md`](examples/ffi.md)
+
+---
+
+## 🔧 Development
+
+```bash
+# Build the Rust core
+cargo build --release
+
+# Build WASM module
+./build-wasm.sh
+
+# Build Python bindings locally
+maturin develop --features python
+
+# Build FFI libs
+./build-ffi.sh
+```
+
+---
+
+## 📚 Submodules & Bindings
+
+### Rust
+* [`examples/rust.md`](examples/rust.md)
+
+### JavaScript/TypeScript
+* [`examples/wasm.md`](examples/wasm.md)
+
+### Python
+* [`examples/python.md`](examples/python.md)
+
+### FFI (C/PHP)
+* [`examples/ffi.md`](examples/ffi.md)
+
+---
+
+## ⚖️ License
+
+Licensed under the **GNU AGPL-3.0-only**.
+See [`LICENSE`](./LICENSE) for full terms.
+
+
+Made by [@Nano112](https://github.com/Nano112) with ❤️

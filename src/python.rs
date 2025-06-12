@@ -3,6 +3,8 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyBytes};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 
 use crate::{
     UniversalSchematic,
@@ -340,11 +342,56 @@ fn debug_json_schematic(schematic: &PySchematic) -> String {
     format!("{}\n{}", schematic.debug_info(), format_json_schematic(&schematic.inner))
 }
 
+
+#[pyfunction]
+fn load_schematic(path: &str) -> PyResult<PySchematic> {
+    let data = fs::read(path)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+
+    let mut sch = PySchematic::new(Some(
+        Path::new(path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unnamed")
+            .to_owned(),
+    ));
+    sch.from_data(&data)?;
+    Ok(sch)
+}
+
+#[pyfunction]
+#[pyo3(signature = (schematic, path, format = "auto"))]
+fn save_schematic(schematic: &PySchematic, path: &str, format: &str) -> PyResult<()> {
+    let bytes = match format {
+        "litematic" => schematic.to_litematic(Python::with_gil(|py| py))?,
+        "schematic" => schematic.to_schematic(Python::with_gil(|py| py))?,
+        "auto" => {
+            if path.ends_with(".litematic") {
+                schematic.to_litematic(Python::with_gil(|py| py))?
+            } else {
+                schematic.to_schematic(Python::with_gil(|py| py))?
+            }
+        }
+        other => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Unknown format '{}', choose 'litematic', 'schematic', or 'auto'",
+                other
+            )))
+        }
+    };
+
+    fs::write(path, &bytes)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    Ok(())
+}
+
 #[pymodule]
 fn nucleation(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySchematic>()?;
     m.add_class::<PyBlockState>()?;
     m.add_function(wrap_pyfunction!(debug_schematic, m)?)?;
     m.add_function(wrap_pyfunction!(debug_json_schematic, m)?)?;
+    m.add_function(wrap_pyfunction!(load_schematic, m)?)?;
+    m.add_function(wrap_pyfunction!(save_schematic, m)?)?;
     Ok(())
 }

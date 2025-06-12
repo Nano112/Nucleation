@@ -208,6 +208,9 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} --features php
 
       - name: Generate PHP stubs
+        run: cargo php stubs --release --out nucleation-stubs.php
+
+      - name: Generate PHP stubs
         run: cargo php stubs --out nucleation-stubs.php
 
       - name: Organize PHP extension output

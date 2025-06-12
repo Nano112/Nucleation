@@ -362,31 +362,28 @@ fn load_schematic(path: &str) -> PyResult<PySchematic> {
 #[pyfunction]
 #[pyo3(signature = (schematic, path, format = "auto"))]
 fn save_schematic(schematic: &PySchematic, path: &str, format: &str) -> PyResult<()> {
-    Python::with_gil(|py| {
-        let py_bytes = match format {
-            "litematic" => schematic.to_litematic(py)?,
-            "schematic" => schematic.to_schematic(py)?,
-            "auto" => {
-                if path.ends_with(".litematic") {
-                    schematic.to_litematic(py)?
-                } else {
-                    schematic.to_schematic(py)?
-                }
+    let bytes = match format {
+        "litematic" => schematic.to_litematic(Python::with_gil(|py| py))?,
+        "schematic" => schematic.to_schematic(Python::with_gil(|py| py))?,
+        "auto" => {
+            if path.ends_with(".litematic") {
+                schematic.to_litematic(Python::with_gil(|py| py))?
+            } else {
+                schematic.to_schematic(Python::with_gil(|py| py))?
             }
-            other => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Unknown format '{}'", other),
-                ))
-            }
-        };
+        }
+        other => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Unknown format '{}', choose 'litematic', 'schematic', or 'auto'",
+                other
+            )))
+        }
+    };
 
-        let bytes = py_bytes.cast_as::<pyo3::types::PyBytes>(py)?.as_bytes();
-
-        std::fs::write(path, bytes)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))
-    })
+    fs::write(path, &bytes)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    Ok(())
 }
-
 
 #[pymodule]
 fn nucleation(m: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -441,9 +441,7 @@ pub fn nucleation_save_to_file(schematic: &NucleationSchematic, file_path: Strin
 
     Ok(true)
 }
-
-// Required module registration - this is the key fix
 #[php_module]
-pub fn get_module(module: ModuleBuilder) -> ModuleBuilder {
+pub fn module(module: ModuleBuilder) -> ModuleBuilder {
     module
 }

@@ -359,30 +359,38 @@ fn load_schematic(path: &str) -> PyResult<PySchematic> {
     Ok(sch)
 }
 
+
 #[pyfunction]
 #[pyo3(signature = (schematic, path, format = "auto"))]
 fn save_schematic(schematic: &PySchematic, path: &str, format: &str) -> PyResult<()> {
-    let bytes = match format {
-        "litematic" => schematic.to_litematic(Python::with_gil(|py| py))?,
-        "schematic" => schematic.to_schematic(Python::with_gil(|py| py))?,
-        "auto" => {
-            if path.ends_with(".litematic") {
-                schematic.to_litematic(Python::with_gil(|py| py))?
-            } else {
-                schematic.to_schematic(Python::with_gil(|py| py))?
+    Python::with_gil(|py| {
+        let py_bytes = match format {
+            "litematic" => schematic.to_litematic(py)?,
+            "schematic" => schematic.to_schematic(py)?,
+            "auto" => {
+                if path.ends_with(".litematic") {
+                    schematic.to_litematic(py)?
+                } else {
+                    schematic.to_schematic(py)?
+                }
             }
-        }
-        other => {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Unknown format '{}', choose 'litematic', 'schematic', or 'auto'",
-                other
-            )))
-        }
-    };
+            other => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Unknown format '{}', choose 'litematic', 'schematic', or 'auto'",
+                    other
+                )))
+            }
+        };
 
-    fs::write(path, &bytes)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    Ok(())
+        // Extract actual bytes from PyObject
+        let bytes_obj = py_bytes.bind(py).downcast::<PyBytes>()?;
+        let bytes = bytes_obj.as_bytes();
+
+        fs::write(path, bytes)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+
+        Ok(())
+    })
 }
 
 #[pymodule]

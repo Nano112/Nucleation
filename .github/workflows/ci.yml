@@ -71,7 +71,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Run tests
-        run: cargo test
+        run: |
+          cargo test  # Test default (no features) 
+          cargo test --features "wasm,ffi"  # Test features used in CI
 
   build-wasm:
     needs: [test, check-version]
@@ -94,7 +96,7 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Build Rust
-        run: cargo build --release --all-features
+        run: cargo build --release  # Build default (what crates.io will build)
       - name: Build WASM
         run: |
           chmod +x ./build-wasm.sh

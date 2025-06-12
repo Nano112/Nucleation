@@ -34,6 +34,7 @@ jobs:
         run: |
           VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d '"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Found version: $VERSION"
 
       - name: Check if version changed
         id: check
@@ -139,7 +140,8 @@ jobs:
       - name: Move nucleation library output
         run: |
           mkdir -p release-artifacts
-          cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} release-artifacts/
+          # Rename the library file to include platform
+          cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} release-artifacts/libnucleation-${{ matrix.platform }}.${{ matrix.ext }}
       - name: Upload nucleation library artifacts
         uses: actions/upload-artifact@v4
         with:

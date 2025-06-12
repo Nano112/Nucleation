@@ -22,6 +22,8 @@ mod wasm;
 pub mod ffi;
 #[cfg(feature = "python")]
 mod python;
+#[cfg(feature = "php")]
+mod php;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;
@@ -32,3 +34,7 @@ pub use print_utils::{format_schematic, format_json_schematic};
 // Re-export WASM types when building with WASM feature
 #[cfg(feature = "wasm")]
 pub use wasm::*;
+
+// Re-export PHP types when building with PHP feature
+#[cfg(feature = "php")]
+pub use php::*;

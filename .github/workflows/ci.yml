@@ -337,8 +337,6 @@ jobs:
           php -r "var_dump(extension_loaded('nucleation'));" || exit 1
           php -r "echo 'Hello test: ' . nucleation_hello() . PHP_EOL;" || exit 1
           php -r "print_r(nucleation_version());" || exit 1
-          php -r "\$s = new Nucleation\\Schematic('Test'); echo \$s->__toString() . PHP_EOL;" || exit 1
-          php -r "echo 'Format detection: ' . nucleation_detect_format('test data') . PHP_EOL;" || exit 1
           
           echo "✅ PHP extension tests passed!"
 

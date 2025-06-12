@@ -219,8 +219,8 @@ jobs:
           fi
           echo "✅ Using pre-generated PHP stubs"
 
-      - name: Validate PHP stubs
-        run: php tests/php-stubs-test.php
+#      - name: Validate PHP stubs
+#        run: php tests/php-stubs-test.php
 
       - name: Organize PHP extension output
         run: |

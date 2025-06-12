@@ -18,51 +18,51 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+###############################################################################
+#  1 ── DETECT VERSION BUMP ───────────────────────────────────────────────────
+###############################################################################
 jobs:
   check-version:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      should_release: ${{ steps.check.outputs.should_release }}
+      should_release: ${{ steps.bump.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+        with: { fetch-depth: 2 }
 
-      - name: Get current version
+      - name: Read current version from Cargo.toml
         id: version
         run: |
-          VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d '"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)" >> $GITHUB_OUTPUT
 
-      - name: Check if version changed
-        id: check
+      - name: Decide if we publish a new release
+        id: bump
         run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" =~ ^refs/heads/(main|master)$ ]]; then
-            if git diff HEAD^ HEAD --name-only | grep -q "Cargo.toml"; then
-              OLD_VERSION=$(git show HEAD^:Cargo.toml | grep -m1 'version = ' | cut -d '"' -f2)
-              CURRENT_VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d '"' -f2)
-              if [[ "$OLD_VERSION" != "$CURRENT_VERSION" ]]; then
-                echo "should_release=true" >> $GITHUB_OUTPUT
-              else
-                echo "should_release=false" >> $GITHUB_OUTPUT
-              fi
-            else
-              echo "should_release=false" >> $GITHUB_OUTPUT
-            fi
-          else
+          if [[ "${{ github.event_name }}" != "push" ]]; then
             echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          CHANGED=$(git diff HEAD^ HEAD --name-only | grep -c "Cargo.toml" || true)
+          if [[ $CHANGED -eq 0 ]]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          OLD=$(git show HEAD^:Cargo.toml | grep -m1 '^version = ' | cut -d '"' -f2)
+          NEW="${{ steps.version.outputs.version }}"
+          [[ "$OLD" != "$NEW" ]] && echo "should_release=true" >> $GITHUB_OUTPUT || \
+            echo "should_release=false" >> $GITHUB_OUTPUT
 
+  ###############################################################################
+  #  2 ── TEST SUITE (pure Rust) ────────────────────────────────────────────────
+  ###############################################################################
   test:
     runs-on: ubuntu-latest
+    env: { VERSION: ${{ needs.check-version.outputs.version }} }
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        with: { profile: minimal, toolchain: stable, override: true }
       - uses: actions/cache@v4
         with:
           path: |
@@ -70,20 +70,27 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run tests
+      - name: Run tests (all features)
         run: cargo test --all-features
 
+  ###############################################################################
+  #  3 ── GENERIC BUILD  (WASM + Node native .so) ───────────────────────────────
+  ###############################################################################
   build:
     needs: test
     runs-on: ubuntu-latest
+    env: { VERSION: ${{ needs.check-version.outputs.version }} }
     steps:
       - uses: actions/checkout@v4
+
+      # Rust & wasm-bindgen toolchain
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
           target: wasm32-unknown-unknown
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -91,26 +98,55 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - name: Build Rust
+        run: curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      # ─── Build native (Node) + all features
+      - name: Build Rust (native)
         run: cargo build --release --all-features
-      - name: Build WASM
+
+      # ─── Build WASM bundle (keeps canonical filenames in pkg/)
+      - name: Build WASM bundle
         run: |
           chmod +x ./build-wasm.sh
           ./build-wasm.sh
-      - name: Organize output
+
+      # ─── Rename artefacts with VERSION and TARGET triple
+      - name: Stamp artefacts with version & triple
         run: |
+          set -e
           mkdir -p release-artifacts
-          cp -r pkg/* release-artifacts/
-          cp target/release/libnucleation.* release-artifacts/ || true
+
+          # WASM artefacts
+          TARGET_WASM=wasm32-unknown-unknown
+          for f in pkg/*; do
+            base=$(basename "$f")
+            ext="${base##*.}"
+            stem="${base%.*}"
+            cp "$f" "release-artifacts/${stem}-${VERSION}-${TARGET_WASM}.${ext}"
+          done
+
+          # Native .so (Linux host)
+          LIB=$(echo target/release/libnucleation.* | head -n1)
+          if [[ -f "$LIB" ]]; then
+            host_triple=$(rustc -vV | awk '/host:/ {print $2}')
+            ext="${LIB##*.}"
+            cp "$LIB" "release-artifacts/libnucleation-${VERSION}-${host_triple}.${ext}"
+          fi
+
+          # Docs, license, readme
           cp README.md LICENSE release-artifacts/
-      - name: Upload WASM artifacts
+
+      - name: Upload bundle artefacts
         uses: actions/upload-artifact@v4
         with:
-          name: wasm-artifacts
+          name: wasm-node-${{ env.VERSION }}
           path: release-artifacts
 
+  ###############################################################################
+  #  4 ── FFI MATRIX (Linux & macOS) ────────────────────────────────────────────
+  ###############################################################################
   build-ffi:
     needs: test
     strategy:
@@ -119,103 +155,76 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             ext: so
-          - os: macos-13
+          - os: macos-13          # Intel
             target: x86_64-apple-darwin
             ext: dylib
-          - os: macos-14
+          - os: macos-14          # Apple Silicon
             target: aarch64-apple-darwin
             ext: dylib
     runs-on: ${{ matrix.os }}
+    env: { VERSION: ${{ needs.check-version.outputs.version }} }
     steps:
       - uses: actions/checkout@v4
       - run: rustup target add ${{ matrix.target }}
-      - name: Build FFI
+      - name: Build FFI library
         run: cargo build --release --target ${{ matrix.target }} --features ffi
-      - name: Move FFI output
+      - name: Stamp FFI artefact
         run: |
           mkdir -p release-artifacts
-          cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} release-artifacts/
-      - name: Upload release artifacts
+          cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} \
+             release-artifacts/libnucleation-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}
+      - name: Upload FFI artefact
         uses: actions/upload-artifact@v4
         with:
-          name: ffi-artifacts-${{ matrix.target }}
+          name: ffi-${{ matrix.target }}-${{ env.VERSION }}
           path: release-artifacts
 
-
+  ###############################################################################
+  #  5 ── PUBLISH (when version bump) ───────────────────────────────────────────
+  ###############################################################################
   publish:
     needs: [check-version, build, build-ffi]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    env: { VERSION: ${{ needs.check-version.outputs.version }} }
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download WASM artifacts
+      - name: Download artefacts
         uses: actions/download-artifact@v4
-        with:
-          name: wasm-artifacts
-          path: release-artifacts
+        with: { path: release-artifacts }
 
-      - name: Download FFI (x86_64-linux)
-        uses: actions/download-artifact@v4
-        with:
-          name: ffi-artifacts-x86_64-unknown-linux-gnu
-          path: release-artifacts
+      # ─── Publish to crates.io ──────────────────────────────────────────────
+      - uses: actions-rs/cargo@v1
+        with: { command: publish, args: --allow-dirty --token ${{ secrets.CRATES_IO_TOKEN }} }
 
-      - name: Download FFI (Intel macOS)
-        uses: actions/download-artifact@v4
-        with:
-          name: ffi-artifacts-x86_64-apple-darwin
-          path: release-artifacts
-
-      - name: Download FFI (Apple Silicon)
-        uses: actions/download-artifact@v4
-        with:
-          name: ffi-artifacts-aarch64-apple-darwin
-          path: release-artifacts
-
-      - name: Publish to crates.io
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --allow-dirty --token ${{ secrets.CRATES_IO_TOKEN }}
-
-      - name: Setup Node.js
+      # ─── Publish to npm (pkg/ kept vanilla) ───────────────────────────────
+      - name: Setup Node
         uses: actions/setup-node@v4
-        with:
-          node-version: '18.x'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Update and Publish npm package
-        run: |
-          cd release-artifacts
-          node -e "
-            const fs = require('fs');
-            const path = './package.json';
-            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            pkg.version = '${{ needs.check-version.outputs.version }}';
-            pkg.description = 'A high-performance Minecraft schematic parser and utility library';
-            pkg.repository = { type: 'git', url: 'https://github.com/Schem-at/Nucleation' };
-            pkg.homepage = 'https://github.com/Schem-at/Nucleation';
-            pkg.author = 'Nano <nano@schem.at>';
-            pkg.license = 'MIT OR Apache-2.0';
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2));
-          "
-          npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        with: { node-version: '18.x', registry-url: 'https://registry.npmjs.org' }
 
+      - name: Bump version in pkg/package.json & publish
+        run: |
+          cd pkg
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp && mv tmp package.json
+          npm publish
+        env: { NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} }
+
+      # ─── Publish PyPI wheels via maturin ──────────────────────────────────
       - name: Setup Python
         uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install maturin & Publish
+        with: { python-version: '3.12' }
+
+      - name: Publish Python wheel
         run: |
           pip install maturin
           maturin publish --features python --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}
 
+      # ─── Create GitHub Release with all artefacts ─────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.check-version.outputs.version }}
-          name: Release v${{ needs.check-version.outputs.version }}
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
           generate_release_notes: true
           files: release-artifacts/**

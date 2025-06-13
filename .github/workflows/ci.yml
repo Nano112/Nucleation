@@ -199,31 +199,14 @@ jobs:
       - name: Download nucleation WASM
         uses: actions/download-artifact@v4
         with:
-          name: nucleation-wasm-v${{ needs.check-version.outputs.version }}-web
+          pattern: nucleation-wasm-v${{ needs.check-version.outputs.version }}-*
           path: release-artifacts
+          merge-multiple: true
 
-      - name: Download nucleation (Linux x64)
+      - name: Download all nucleation native libraries
         uses: actions/download-artifact@v4
         with:
-          name: nucleation-v${{ needs.check-version.outputs.version }}-linux-x64
-          path: release-artifacts
-
-      - name: Download nucleation (macOS x64)
-        uses: actions/download-artifact@v4
-        with:
-          name: nucleation-v${{ needs.check-version.outputs.version }}-macos-x64
-          path: release-artifacts
-
-      - name: Download nucleation (macOS ARM64)
-        uses: actions/download-artifact@v4
-        with:
-          name: nucleation-v${{ needs.check-version.outputs.version }}-macos-arm64
-          path: release-artifacts
-
-      - name: Download PHP extensions
-        uses: actions/download-artifact@v4
-        with:
-          pattern: nucleation-php*-v${{ needs.check-version.outputs.version }}-*
+          pattern: nucleation-v${{ needs.check-version.outputs.version }}-*
           path: release-artifacts
           merge-multiple: true
 

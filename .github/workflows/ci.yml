@@ -113,7 +113,7 @@ jobs:
           path: release-artifacts
 
   build-nucleation:
-    needs: [test, check-version]
+    needs: [ test, check-version ]
     strategy:
       matrix:
         include:
@@ -121,29 +121,67 @@ jobs:
             target: x86_64-unknown-linux-gnu
             ext: so
             platform: linux-x64
+            cross: false
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             ext: so
             platform: linux-arm64
+            cross: true  # Enable cross-compilation
           - os: macos-13
             target: x86_64-apple-darwin
             ext: dylib
             platform: macos-x64
+            cross: false
           - os: macos-14
             target: aarch64-apple-darwin
             ext: dylib
             platform: macos-arm64
+            cross: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: rustup target add ${{ matrix.target }}
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      # Cross-compilation setup for ARM64 Linux
+      - name: Install cross-compilation tools (ARM64 Linux)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          
+          # Configure Cargo for cross-compilation
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          
+          [env]
+          CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
+          CXX_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-g++"
+          AR_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-ar"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "aarch64-linux-gnu-gcc"
+          EOF
+
       - name: Build nucleation native library
+        env:
+          # Set cross-compilation environment variables
+          CC: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
+          CXX: ${{ matrix.cross && 'aarch64-linux-gnu-g++' || '' }}
+          AR: ${{ matrix.cross && 'aarch64-linux-gnu-ar' || '' }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
         run: cargo build --release --target ${{ matrix.target }} --features ffi
+
       - name: Move nucleation library output
         run: |
           mkdir -p release-artifacts
-          # Rename the library file to include platform
           cp target/${{ matrix.target }}/release/libnucleation.${{ matrix.ext }} release-artifacts/libnucleation-${{ matrix.platform }}.${{ matrix.ext }}
+
       - name: Upload nucleation library artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -151,50 +189,63 @@ jobs:
           path: release-artifacts
 
   build-php:
-    needs: [test, check-version]
+    needs: [ test, check-version ]
     strategy:
       matrix:
         include:
+          # Linux x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             ext: so
             platform: linux-x64
             php-version: '8.4'
+            cross: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             ext: so
             platform: linux-x64
             php-version: '8.3'
+            cross: false
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             ext: so
             platform: linux-x64
             php-version: '8.2'
+            cross: false
+
+          # Linux ARM64 - cross-compilation
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             ext: so
             platform: linux-arm64
             php-version: '8.4'
+            cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             ext: so
             platform: linux-arm64
             php-version: '8.3'
+            cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             ext: so
             platform: linux-arm64
             php-version: '8.2'
+            cross: true
+
+          # macOS
           - os: macos-13
             target: x86_64-apple-darwin
             ext: dylib
             platform: macos-x64
             php-version: '8.4'
+            cross: false
           - os: macos-14
             target: aarch64-apple-darwin
             ext: dylib
             platform: macos-arm64
             php-version: '8.4'
+            cross: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -213,14 +264,44 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Install cargo-php
-        run: cargo install cargo-php --locked
+      # Cross-compilation setup for ARM64 Linux
+      - name: Install cross-compilation tools (ARM64 Linux)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          
+          # Configure Cargo for cross-compilation
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          
+          [env]
+          CC_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-gcc"
+          CXX_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-g++"
+          AR_aarch64_unknown_linux_gnu = "aarch64-linux-gnu-ar"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "aarch64-linux-gnu-gcc"
+          EOF
 
-      - name: Install cargo-php (ignore stub generation issues)
+      - name: Install cargo-php
         run: cargo install cargo-php --locked || echo "cargo-php installation failed, using pre-generated stubs"
 
-      - name: Build PHP extension (Linux)
-        if: runner.os == 'Linux'
+      - name: Build PHP extension (Linux x64)
+        if: matrix.platform == 'linux-x64'
+        run: cargo build --release --target ${{ matrix.target }} --features php
+
+      - name: Build PHP extension (Linux ARM64)
+        if: matrix.platform == 'linux-arm64'
+        env:
+          # Set cross-compilation environment variables
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+          AR: aarch64-linux-gnu-ar
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          # Additional PHP-specific variables for cross-compilation
+          PHP_CONFIG: php-config
+          PKG_CONFIG_ALLOW_CROSS: 1
         run: cargo build --release --target ${{ matrix.target }} --features php
 
       - name: Build PHP extension (macOS)
@@ -237,9 +318,6 @@ jobs:
             exit 1
           fi
           echo "✅ Using pre-generated PHP stubs"
-
-#      - name: Validate PHP stubs
-#        run: php tests/php-stubs-test.php
 
       - name: Organize PHP extension output
         run: |
@@ -338,7 +416,9 @@ jobs:
           \`\`\`
           EOF
 
-      - name: Test PHP extension
+      # Skip testing for ARM64 cross-compiled extensions since we can't run them on x64
+      - name: Test PHP extension (native builds only)
+        if: "!matrix.cross"
         run: |
           # Install the extension for testing
           EXT_DIR=$(php-config --extension-dir)
@@ -358,6 +438,13 @@ jobs:
           php -r "print_r(nucleation_version());" || exit 1
           
           echo "✅ PHP extension tests passed!"
+
+      - name: Skip testing for cross-compiled extensions
+        if: matrix.cross
+        run: |
+          echo "⚠️  Skipping tests for cross-compiled ARM64 extension"
+          echo "   (Cannot run ARM64 binaries on x64 runner)"
+          echo "✅ Build completed successfully"
 
       - name: Upload PHP extension artifacts
         uses: actions/upload-artifact@v4

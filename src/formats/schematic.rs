@@ -88,6 +88,9 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
 
     // Create clean palette and mapping
     let (palette_nbt, palette_mapping) = convert_palette_with_mapping(&merged_region.palette);
+
+    // Store palette size before moving palette_nbt
+    let palette_size = palette_nbt.len();
     blocks_container.insert("Palette", palette_nbt);
 
     // Remap block data using the new palette mapping
@@ -108,7 +111,7 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     #[cfg(feature = "wasm")]
     {
         console::log_1(&format!("Original palette size: {}", merged_region.palette.len()).into());
-        console::log_1(&format!("New palette size: {}", palette_nbt.len()).into());
+        console::log_1(&format!("New palette size: {}", palette_size).into());
         console::log_1(&format!("Mapping array size: {}", palette_mapping.len()).into());
         console::log_1(&format!("Block data size: {}", merged_region.blocks.len()).into());
 
@@ -302,7 +305,7 @@ fn convert_palette_v2(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
 
     let mut next_id = 1; // Start at 1 since air is at 0
 
-    for (id, block_state) in palette.iter().enumerate() {
+    for block_state in palette.iter() {
         if block_state.name == "minecraft:air" {
             continue; // Skip air blocks as we already added it at index 0
         }
@@ -324,7 +327,6 @@ fn convert_palette_v2(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
 
     (nbt_palette, max_id as i32)
 }
-
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {
     let reader   = BufReader::with_capacity(1 << 20, data);   // 1 MiB buf
     let mut gz   = GzDecoder::new(reader);

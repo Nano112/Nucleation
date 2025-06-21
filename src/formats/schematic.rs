@@ -665,14 +665,12 @@ mod tests {
 
         let (nbt_palette, max_id) = convert_palette(&palette);
 
-        // V3 preserves original indices - no automatic air insertion
-        assert_eq!(max_id, 2); // Indices 0, 1, 2 = max of 2
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 0);
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 1);
-        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 2);
-
-        // Air should NOT be automatically added in v3
-        assert!(nbt_palette.get::<_, i32>("minecraft:air").is_err());
+        // V3 now ensures air is always at index 0 for WorldEdit compatibility
+        assert_eq!(max_id, 3); // air=0, stone=1, dirt=2, wool=3
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 3);
     }
 
     #[test]
@@ -706,13 +704,33 @@ mod tests {
 
         let (nbt_palette, max_id) = convert_palette(&palette);
 
-        // V3 with air explicitly in palette at index 0
+        // V3 with air explicitly in palette - air should still be at index 0
         assert_eq!(max_id, 2);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
     }
 
+    #[test]
+    fn test_convert_palette_with_mapping() {
+        let palette = vec![
+            BlockState::new("minecraft:stone".to_string()),
+            BlockState::new("minecraft:unknown".to_string()), // Should be mapped to air
+            BlockState::new("minecraft:dirt".to_string()),
+        ];
+
+        let (nbt_palette, mapping) = convert_palette_with_mapping(&palette);
+
+        // Check palette structure
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
+
+        // Check mapping array
+        assert_eq!(mapping[0], 1); // stone -> 1
+        assert_eq!(mapping[1], 0); // unknown -> 0 (air)
+        assert_eq!(mapping[2], 2); // dirt -> 2
+    }
     #[test]
     fn test_import_new_chest_test_schem() {
         let name = "new_chest_test";

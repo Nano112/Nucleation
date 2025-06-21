@@ -58,6 +58,7 @@ pub fn is_schematic(data: &[u8]) -> bool {
     root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
+// Default function uses v3 format
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     to_schematic_v3(schematic)
 }
@@ -85,13 +86,46 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     // Create the Blocks container (required in v3)
     let mut blocks_container = NbtCompound::new();
 
-    // Add palette to Blocks container
-    let (palette_nbt, _) = convert_palette(&merged_region.palette);
+    // Create clean palette and mapping
+    let (palette_nbt, palette_mapping) = convert_palette_with_mapping(&merged_region.palette);
     blocks_container.insert("Palette", palette_nbt);
 
-    // Encode block data
-    let block_data: Vec<u8> = merged_region.blocks.iter()
-        .flat_map(|&block_id| encode_varint(block_id as u32))
+    // Remap block data using the new palette mapping
+    let remapped_blocks: Vec<u32> = merged_region.blocks.iter()
+        .map(|&original_id| {
+            if original_id < palette_mapping.len() {
+                palette_mapping[original_id] as u32
+            } else {
+                // Out of bounds - map to air and log warning if debugging
+                #[cfg(feature = "wasm")]
+                console::log_1(&format!("Warning: Block index {} out of bounds (palette size: {}), mapping to air", original_id, palette_mapping.len()).into());
+                0 // Default to air for out-of-bounds indices
+            }
+        })
+        .collect();
+
+    // Debug logging for palette issues
+    #[cfg(feature = "wasm")]
+    {
+        console::log_1(&format!("Original palette size: {}", merged_region.palette.len()).into());
+        console::log_1(&format!("New palette size: {}", palette_nbt.len()).into());
+        console::log_1(&format!("Mapping array size: {}", palette_mapping.len()).into());
+        console::log_1(&format!("Block data size: {}", merged_region.blocks.len()).into());
+
+        // Log first few mappings for debugging
+        for (i, &original_id) in merged_region.blocks.iter().take(10).enumerate() {
+            let mapped_id = if original_id < palette_mapping.len() {
+                palette_mapping[original_id]
+            } else {
+                0
+            };
+            console::log_1(&format!("Block[{}]: {} -> {}", i, original_id, mapped_id).into());
+        }
+    }
+
+    // Encode remapped block data
+    let block_data: Vec<u8> = remapped_blocks.iter()
+        .flat_map(|&block_id| encode_varint(block_id))
         .collect();
 
     // Add block data to Blocks container (renamed from "BlockData" to "Data" in v3)
@@ -107,10 +141,23 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     // Add the Blocks container to schematic data
     schematic_data.insert("Blocks", NbtTag::Compound(blocks_container));
 
-    // Entities remain at root level in v3
+    // Entities remain at root level in v3 - with validation
     let mut entities = NbtList::new();
     for region in schematic.regions.values() {
-        entities.extend(convert_entities(region).iter().cloned());
+        let region_entities = convert_entities(region);
+
+        // Only add valid entities
+        for entity in region_entities.iter() {
+            if let NbtTag::Compound(compound) = entity {
+                // Validate that entity has required fields
+                if compound.contains_key("Id") && compound.contains_key("Pos") {
+                    entities.push(entity.clone());
+                } else {
+                    #[cfg(feature = "wasm")]
+                    console::log_1(&"Warning: Skipping invalid entity missing Id or Pos".into());
+                }
+            }
+        }
     }
     schematic_data.insert("Entities", NbtTag::List(entities));
 
@@ -180,12 +227,35 @@ pub fn to_schematic_v2(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     Ok(encoder.finish()?)
 }
 
-// Palette conversion for v3 (preserves original indices)
+// Palette conversion for v3 (creates clean sequential indices)
 fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
-    let mut nbt_palette = NbtCompound::new();
-    let mut max_id = 0;
+    let (nbt_palette, _) = convert_palette_with_mapping(palette);
+    let max_id = nbt_palette.len() as i32 - 1;
+    (nbt_palette, max_id)
+}
 
-    for (id, block_state) in palette.iter().enumerate() {
+// Helper function that returns both palette and mapping for index conversion
+fn convert_palette_with_mapping(palette: &Vec<BlockState>) -> (NbtCompound, Vec<i32>) {
+    let mut nbt_palette = NbtCompound::new();
+    let mut mapping = vec![0i32; palette.len()]; // Default all to air (index 0)
+
+    // Always start with air at index 0
+    nbt_palette.insert("minecraft:air", NbtTag::Int(0));
+    let mut next_id = 1;
+
+    for (original_id, block_state) in palette.iter().enumerate() {
+        // Handle invalid or unknown blocks by mapping them to air
+        if block_state.name.is_empty() || block_state.name == "minecraft:unknown" {
+            mapping[original_id] = 0; // Map to air
+            continue;
+        }
+
+        // If it's already air, map to index 0
+        if block_state.name == "minecraft:air" {
+            mapping[original_id] = 0;
+            continue;
+        }
+
         let key = if block_state.properties.is_empty() {
             block_state.name.clone()
         } else {
@@ -196,11 +266,30 @@ fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
                         .join(","))
         };
 
-        nbt_palette.insert(&key, NbtTag::Int(id as i32));
-        max_id = max_id.max(id as i32);
+        // Check if this block state already exists in the palette
+        let mut found_id = None;
+        for (existing_key, tag) in nbt_palette.inner() {
+            if existing_key == &key {
+                if let NbtTag::Int(id) = tag {
+                    found_id = Some(*id);
+                    break;
+                }
+            }
+        }
+
+        let assigned_id = if let Some(id) = found_id {
+            id
+        } else {
+            nbt_palette.insert(&key, NbtTag::Int(next_id));
+            let id = next_id;
+            next_id += 1;
+            id
+        };
+
+        mapping[original_id] = assigned_id;
     }
 
-    (nbt_palette, max_id)
+    (nbt_palette, mapping)
 }
 
 // Palette conversion for v2 (legacy behavior with air at index 0)
@@ -235,7 +324,6 @@ fn convert_palette_v2(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
 
     (nbt_palette, max_id as i32)
 }
-
 
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {
     let reader   = BufReader::with_capacity(1 << 20, data);   // 1 MiB buf

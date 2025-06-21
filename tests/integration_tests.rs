@@ -185,6 +185,23 @@ fn test_expand_schematic() {
 }
 
 
+// convert litematic-rose-farm from samples to schem
+#[test]
+fn test_litematic_to_schem_conversion() {
+    // convert only litematic-rose-farm.litematic to schem
+    let test_files = list_test_file("litematic");
+    for file_name in test_files {
+        if file_name == "litematic-rose-farm" {
+            litematic_to_schem_conversion(&file_name);
+        }
+    }
+    // Clean up the generated file
+    // fs::remove_file("tests/output/litematic-rose-farm.schem").expect("Failed to remove converted schem file");
+    println!("Successfully converted litematic-rose-farm.litematic to .schem format and verified the contents.");
+}
+    
+
+
 
 
 struct TestFiles<'a> {
@@ -213,5 +230,4 @@ impl<'a> Iterator for TestFiles<'a> {
 fn list_test_file(extension: &str) -> TestFiles {
     const DIR_PATH: &str = "./tests/samples";
     TestFiles { extension, reader: fs::read_dir(DIR_PATH).unwrap() }
-
 }

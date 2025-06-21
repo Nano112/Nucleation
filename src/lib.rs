@@ -28,6 +28,7 @@ mod php;
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;
 pub use block_state::BlockState;
+pub use region::Region;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic, format_json_schematic};
 

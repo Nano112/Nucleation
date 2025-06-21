@@ -334,6 +334,14 @@ impl UniversalSchematic {
         })
     }
 
+    pub fn get_default_region_mut(&mut self) -> &mut Region {
+        let region_name = self.default_region_name.clone();
+
+        self.regions.entry(region_name.clone()).or_insert_with(|| {
+            Region::new(region_name, (0, 0, 0), (1, 1, 1))
+        })
+    }
+
 
     pub fn get_bounding_box(&self) -> BoundingBox {
         if self.regions.is_empty() {

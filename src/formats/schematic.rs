@@ -58,7 +58,74 @@ pub fn is_schematic(data: &[u8]) -> bool {
     root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
+// Default function uses v3 format
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    to_schematic_v3(schematic)
+}
+
+// Version 3 format (recommended)
+pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut root = NbtCompound::new();
+
+    // Version 3 format
+    root.insert("Version", NbtTag::Int(3));
+    root.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
+
+    let bounding_box = schematic.get_bounding_box();
+    let (width, height, length) = bounding_box.get_dimensions();
+
+    root.insert("Width", NbtTag::Short((width as i16).abs()));
+    root.insert("Height", NbtTag::Short((height as i16).abs()));
+    root.insert("Length", NbtTag::Short((length as i16).abs()));
+
+    let offset = vec![0, 0, 0];
+    root.insert("Offset", NbtTag::IntArray(offset));
+
+    let merged_region = schematic.get_merged_region();
+
+    // Create the Blocks container (required in v3)
+    let mut blocks_container = NbtCompound::new();
+
+    // Add palette to Blocks container
+    let (palette_nbt, _) = convert_palette(&merged_region.palette);
+    blocks_container.insert("Palette", palette_nbt);
+
+    // Encode block data
+    let block_data: Vec<u8> = merged_region.blocks.iter()
+        .flat_map(|&block_id| encode_varint(block_id as u32))
+        .collect();
+
+    // Add block data to Blocks container (renamed from "BlockData" to "Data" in v3)
+    blocks_container.insert("Data", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
+
+    // Add block entities to Blocks container
+    let mut block_entities = NbtList::new();
+    for region in schematic.regions.values() {
+        block_entities.extend(convert_block_entities(region).iter().cloned());
+    }
+    blocks_container.insert("BlockEntities", NbtTag::List(block_entities));
+
+    // Add the Blocks container to root
+    root.insert("Blocks", NbtTag::Compound(blocks_container));
+
+    // Entities remain at root level in v3
+    let mut entities = NbtList::new();
+    for region in schematic.regions.values() {
+        entities.extend(convert_entities(region).iter().cloned());
+    }
+    root.insert("Entities", NbtTag::List(entities));
+
+    // Add metadata
+    root.insert("Metadata", schematic.metadata.to_nbt());
+
+    // Write NBT with proper compression
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
+    Ok(encoder.finish()?)
+}
+
+// Version 2 format (legacy compatibility)
+pub fn to_schematic_v2(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut root = NbtCompound::new();
 
     root.insert("Version", NbtTag::Int(2)); // Schematic format version 2
@@ -67,36 +134,23 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    root.insert("Width", NbtTag::Short((width as i16).abs() ));
+    root.insert("Width", NbtTag::Short((width as i16).abs()));
     root.insert("Height", NbtTag::Short((height as i16).abs()));
     root.insert("Length", NbtTag::Short((length as i16).abs()));
 
     root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
 
-
     let offset = vec![0, 0, 0];
     root.insert("Offset", NbtTag::IntArray(offset));
 
-
     let merged_region = schematic.get_merged_region();
-    
-    root.insert("Palette", convert_palette(&merged_region.palette).0);
-    root.insert("PaletteMax", convert_palette(&merged_region.palette).1 + 1);
+
+    root.insert("Palette", convert_palette_v2(&merged_region.palette).0);
+    root.insert("PaletteMax", convert_palette_v2(&merged_region.palette).1 + 1);
 
     let block_data: Vec<u8> = merged_region.blocks.iter()
         .flat_map(|&block_id| encode_varint(block_id as u32))
         .collect();
-
-
-    //attempt to decode the block data for debug since it's buggy
-    let mut reader = Cursor::new(block_data.clone());
-    let mut decoded_data = Vec::new();
-    while reader.position() < block_data.len() as u64 {
-        let value = decode_varint(&mut reader)?;
-        decoded_data.push(value);
-    }
-    // println!("Decoded Data: {:?}", decoded_data);
-    // println!("Decoded Data Length: {:?}", decoded_data.len());
 
     root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
@@ -114,12 +168,66 @@ pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn s
 
     root.insert("Metadata", schematic.metadata.to_nbt());
 
-
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
 }
 
+// Palette conversion for v3 (preserves original indices)
+fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
+    let mut nbt_palette = NbtCompound::new();
+    let mut max_id = 0;
+
+    for (id, block_state) in palette.iter().enumerate() {
+        let key = if block_state.properties.is_empty() {
+            block_state.name.clone()
+        } else {
+            format!("{}[{}]", block_state.name,
+                    block_state.properties.iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(","))
+        };
+
+        nbt_palette.insert(&key, NbtTag::Int(id as i32));
+        max_id = max_id.max(id as i32);
+    }
+
+    (nbt_palette, max_id)
+}
+
+// Palette conversion for v2 (legacy behavior with air at index 0)
+fn convert_palette_v2(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
+    let mut nbt_palette = NbtCompound::new();
+    let mut max_id = 0;
+
+    // Always ensure air is at index 0
+    nbt_palette.insert("minecraft:air", NbtTag::Int(0));
+
+    let mut next_id = 1; // Start at 1 since air is at 0
+
+    for (id, block_state) in palette.iter().enumerate() {
+        if block_state.name == "minecraft:air" {
+            continue; // Skip air blocks as we already added it at index 0
+        }
+
+        let key = if block_state.properties.is_empty() {
+            block_state.name.clone()
+        } else {
+            format!("{}[{}]", block_state.name,
+                    block_state.properties.iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(","))
+        };
+
+        nbt_palette.insert(&key, NbtTag::Int(next_id));
+        max_id = max_id.max(next_id);
+        next_id += 1;
+    }
+
+    (nbt_palette, max_id as i32)
+}
 
 
 
@@ -233,38 +341,6 @@ fn parse_block_state(input: &str) -> BlockState {
     } else {
         BlockState::new(input.to_string())
     }
-}
-
-fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
-    let mut nbt_palette = NbtCompound::new();
-    let mut max_id = 0;
-    
-    // Always ensure air is at index 0
-    nbt_palette.insert("minecraft:air", NbtTag::Int(0));
-    
-    let mut next_id = 1; // Start at 1 since air is at 0
-    
-    for (id, block_state) in palette.iter().enumerate() {
-        if block_state.name == "minecraft:air" {
-            continue; // Skip air blocks as we already added it at index 0
-        }
-        
-        let key = if block_state.properties.is_empty() {
-            block_state.name.clone()
-        } else {
-            format!("{}[{}]", block_state.name,
-                    block_state.properties.iter()
-                        .map(|(k, v)| format!("{}={}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(","))
-        };
-        
-        nbt_palette.insert(&key, NbtTag::Int(next_id));
-        max_id = max_id.max(next_id);
-        next_id += 1;
-    }
-
-    (nbt_palette, max_id as i32)
 }
 
 pub fn encode_varint(value: u32) -> Vec<u8> {
@@ -483,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_palette() {
+    fn test_convert_palette_v3() {
         let palette = vec![
             BlockState::new("minecraft:stone".to_string()),
             BlockState::new("minecraft:dirt".to_string()),
@@ -495,14 +571,53 @@ mod tests {
 
         let (nbt_palette, max_id) = convert_palette(&palette);
 
-        // Air is always at index 0, and other blocks follow
-        assert_eq!(max_id, 3); // Now we have 4 entries: air, stone, dirt, wool
+        // V3 preserves original indices - no automatic air insertion
+        assert_eq!(max_id, 2); // Indices 0, 1, 2 = max of 2
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 2);
+
+        // Air should NOT be automatically added in v3
+        assert!(nbt_palette.get::<_, i32>("minecraft:air").is_err());
+    }
+
+    #[test]
+    fn test_convert_palette_v2() {
+        let palette = vec![
+            BlockState::new("minecraft:stone".to_string()),
+            BlockState::new("minecraft:dirt".to_string()),
+            BlockState {
+                name: "minecraft:wool".to_string(),
+                properties: [("color".to_string(), "red".to_string())].into_iter().collect(),
+            },
+        ];
+
+        let (nbt_palette, max_id) = convert_palette_v2(&palette);
+
+        // V2 behavior: Air is always at index 0, other blocks follow
+        assert_eq!(max_id, 3); // Air=0, stone=1, dirt=2, wool=3
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
         assert_eq!(nbt_palette.get::<_, i32>("minecraft:wool[color=red]").unwrap(), 3);
     }
 
+    #[test]
+    fn test_convert_palette_v3_with_air() {
+        let palette = vec![
+            BlockState::new("minecraft:air".to_string()),
+            BlockState::new("minecraft:stone".to_string()),
+            BlockState::new("minecraft:dirt".to_string()),
+        ];
+
+        let (nbt_palette, max_id) = convert_palette(&palette);
+
+        // V3 with air explicitly in palette at index 0
+        assert_eq!(max_id, 2);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:air").unwrap(), 0);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:stone").unwrap(), 1);
+        assert_eq!(nbt_palette.get::<_, i32>("minecraft:dirt").unwrap(), 2);
+    }
 
     #[test]
     fn test_import_new_chest_test_schem() {

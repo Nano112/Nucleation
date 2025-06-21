@@ -58,28 +58,27 @@ pub fn is_schematic(data: &[u8]) -> bool {
     root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
-// Default function uses v3 format
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     to_schematic_v3(schematic)
 }
 
 // Version 3 format (recommended)
 pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut root = NbtCompound::new();
+    let mut schematic_data = NbtCompound::new();
 
     // Version 3 format
-    root.insert("Version", NbtTag::Int(3));
-    root.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
+    schematic_data.insert("Version", NbtTag::Int(3));
+    schematic_data.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
 
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    root.insert("Width", NbtTag::Short((width as i16).abs()));
-    root.insert("Height", NbtTag::Short((height as i16).abs()));
-    root.insert("Length", NbtTag::Short((length as i16).abs()));
+    schematic_data.insert("Width", NbtTag::Short((width as i16).abs()));
+    schematic_data.insert("Height", NbtTag::Short((height as i16).abs()));
+    schematic_data.insert("Length", NbtTag::Short((length as i16).abs()));
 
     let offset = vec![0, 0, 0];
-    root.insert("Offset", NbtTag::IntArray(offset));
+    schematic_data.insert("Offset", NbtTag::IntArray(offset));
 
     let merged_region = schematic.get_merged_region();
 
@@ -105,71 +104,79 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     }
     blocks_container.insert("BlockEntities", NbtTag::List(block_entities));
 
-    // Add the Blocks container to root
-    root.insert("Blocks", NbtTag::Compound(blocks_container));
+    // Add the Blocks container to schematic data
+    schematic_data.insert("Blocks", NbtTag::Compound(blocks_container));
 
     // Entities remain at root level in v3
     let mut entities = NbtList::new();
     for region in schematic.regions.values() {
         entities.extend(convert_entities(region).iter().cloned());
     }
-    root.insert("Entities", NbtTag::List(entities));
+    schematic_data.insert("Entities", NbtTag::List(entities));
 
     // Add metadata
-    root.insert("Metadata", schematic.metadata.to_nbt());
+    schematic_data.insert("Metadata", schematic.metadata.to_nbt());
+
+    // Create the proper root structure with "Schematic" tag
+    let mut root = NbtCompound::new();
+    root.insert("Schematic", NbtTag::Compound(schematic_data));
 
     // Write NBT with proper compression
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
+    quartz_nbt::io::write_nbt(&mut encoder, None, &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
 }
 
 // Version 2 format (legacy compatibility)
 pub fn to_schematic_v2(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut root = NbtCompound::new();
+    let mut schematic_data = NbtCompound::new();
 
-    root.insert("Version", NbtTag::Int(2)); // Schematic format version 2
-    root.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
+    schematic_data.insert("Version", NbtTag::Int(2)); // Schematic format version 2
+    schematic_data.insert("DataVersion", NbtTag::Int(schematic.metadata.mc_version.unwrap_or(1343)));
 
     let bounding_box = schematic.get_bounding_box();
     let (width, height, length) = bounding_box.get_dimensions();
 
-    root.insert("Width", NbtTag::Short((width as i16).abs()));
-    root.insert("Height", NbtTag::Short((height as i16).abs()));
-    root.insert("Length", NbtTag::Short((length as i16).abs()));
+    schematic_data.insert("Width", NbtTag::Short((width as i16).abs()));
+    schematic_data.insert("Height", NbtTag::Short((height as i16).abs()));
+    schematic_data.insert("Length", NbtTag::Short((length as i16).abs()));
 
-    root.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
+    schematic_data.insert("Size", NbtTag::IntArray(vec![width as i32, height as i32, length as i32]));
 
     let offset = vec![0, 0, 0];
-    root.insert("Offset", NbtTag::IntArray(offset));
+    schematic_data.insert("Offset", NbtTag::IntArray(offset));
 
     let merged_region = schematic.get_merged_region();
 
-    root.insert("Palette", convert_palette_v2(&merged_region.palette).0);
-    root.insert("PaletteMax", convert_palette_v2(&merged_region.palette).1 + 1);
+    schematic_data.insert("Palette", convert_palette_v2(&merged_region.palette).0);
+    schematic_data.insert("PaletteMax", convert_palette_v2(&merged_region.palette).1 + 1);
 
     let block_data: Vec<u8> = merged_region.blocks.iter()
         .flat_map(|&block_id| encode_varint(block_id as u32))
         .collect();
 
-    root.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
+    schematic_data.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
     let mut block_entities = NbtList::new();
     for region in schematic.regions.values() {
         block_entities.extend(convert_block_entities(region).iter().cloned());
     }
-    root.insert("BlockEntities", NbtTag::List(block_entities));
+    schematic_data.insert("BlockEntities", NbtTag::List(block_entities));
 
     let mut entities = NbtList::new();
     for region in schematic.regions.values() {
         entities.extend(convert_entities(region).iter().cloned());
     }
-    root.insert("Entities", NbtTag::List(entities));
+    schematic_data.insert("Entities", NbtTag::List(entities));
 
-    root.insert("Metadata", schematic.metadata.to_nbt());
+    schematic_data.insert("Metadata", schematic.metadata.to_nbt());
+
+    // Create the proper root structure with "Schematic" tag
+    let mut root = NbtCompound::new();
+    root.insert("Schematic", NbtTag::Compound(schematic_data));
 
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    quartz_nbt::io::write_nbt(&mut encoder, Option::from("Schematic"), &root, quartz_nbt::io::Flavor::Uncompressed)?;
+    quartz_nbt::io::write_nbt(&mut encoder, None, &root, quartz_nbt::io::Flavor::Uncompressed)?;
     Ok(encoder.finish()?)
 }
 
@@ -228,7 +235,6 @@ fn convert_palette_v2(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
 
     (nbt_palette, max_id as i32)
 }
-
 
 
 pub fn from_schematic(data: &[u8]) -> Result<UniversalSchematic, Box<dyn std::error::Error>> {

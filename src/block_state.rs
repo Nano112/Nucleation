@@ -3,6 +3,12 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
+use blockpedia::{
+    BlockState as BlockpediaBlockState, 
+    get_block,
+    color::ExtendedColorData,
+    transforms::BlockShape,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockState {
@@ -103,10 +109,129 @@ impl BlockState {
         Ok(BlockState { name, properties })
     }
 
+    // === Blockpedia Integration ===
 
+    /// Get the blockpedia BlockFacts for this block
+    pub fn get_facts(&self) -> Option<&'static blockpedia::BlockFacts> {
+        get_block(&self.name)
+    }
 
+    /// Get the color information for this block
+    pub fn get_color(&self) -> Option<ExtendedColorData> {
+        self.get_facts()
+            .and_then(|facts| facts.extras.color)
+            .map(|color| color.to_extended())
+    }
 
+    /// Check if this block has a specific property
+    pub fn has_property(&self, property: &str) -> bool {
+        self.properties.contains_key(property)
+    }
 
+    /// Convert to blockpedia BlockState for transformations
+    pub fn to_blockpedia(&self) -> Result<BlockpediaBlockState, String> {
+        let mut blockpedia_block = BlockpediaBlockState::new(&self.name)
+            .map_err(|e| e.to_string())?;
+
+        for (key, value) in &self.properties {
+            blockpedia_block = blockpedia_block.with(key, value)
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(blockpedia_block)
+    }
+
+    /// Create from blockpedia BlockState
+    pub fn from_blockpedia(blockpedia_block: &BlockpediaBlockState) -> Self {
+        let block_string = blockpedia_block.to_string();
+        
+        if let Some(bracket_pos) = block_string.find('[') {
+            let name = block_string[..bracket_pos].to_string();
+            let properties_str = &block_string[bracket_pos + 1..block_string.len() - 1];
+            
+            let mut properties = HashMap::new();
+            if !properties_str.is_empty() {
+                for prop_pair in properties_str.split(',') {
+                    let parts: Vec<&str> = prop_pair.split('=').collect();
+                    if parts.len() == 2 {
+                        properties.insert(parts[0].trim().to_string(), parts[1].trim().to_string());
+                    }
+                }
+            }
+            
+            BlockState { name, properties }
+        } else {
+            BlockState {
+                name: block_string,
+                properties: HashMap::new(),
+            }
+        }
+    }
+
+    // === Block Transformations ===
+
+    /// Rotate this block state by 90 degrees clockwise
+    pub fn rotate_clockwise(&self) -> Result<BlockState, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        let rotated = blockpedia_block.rotate_clockwise()
+            .map_err(|e| e.to_string())?;
+        Ok(Self::from_blockpedia(&rotated))
+    }
+
+    /// Rotate this block state by 180 degrees
+    pub fn rotate_180(&self) -> Result<BlockState, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        let rotated = blockpedia_block.rotate_180()
+            .map_err(|e| e.to_string())?;
+        Ok(Self::from_blockpedia(&rotated))
+    }
+
+    /// Rotate this block state by 270 degrees clockwise (90 counter-clockwise)
+    pub fn rotate_counter_clockwise(&self) -> Result<BlockState, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        let rotated = blockpedia_block.rotate_counter_clockwise()
+            .map_err(|e| e.to_string())?;
+        Ok(Self::from_blockpedia(&rotated))
+    }
+
+    /// Get a material variant of this block (e.g., oak_stairs -> stone_stairs)
+    pub fn with_material(&self, material: &str) -> Result<BlockState, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        let transformed = blockpedia_block.with_material(material)
+            .map_err(|e| e.to_string())?;
+        Ok(Self::from_blockpedia(&transformed))
+    }
+
+    /// Get a shape variant of this block (e.g., stone -> stone_stairs)
+    pub fn with_shape(&self, shape: BlockShape) -> Result<BlockState, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        let transformed = blockpedia_block.with_shape(shape)
+            .map_err(|e| e.to_string())?;
+        Ok(Self::from_blockpedia(&transformed))
+    }
+
+    /// Find all available material variants for this block's shape
+    pub fn available_materials(&self) -> Result<Vec<String>, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        blockpedia_block.available_materials()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Find all available shape variants for this block's material
+    pub fn available_shapes(&self) -> Result<Vec<BlockShape>, String> {
+        let blockpedia_block = self.to_blockpedia()?;
+        blockpedia_block.available_shapes()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Check if this block matches a color within a given tolerance
+    pub fn matches_color(&self, target_color: &ExtendedColorData, tolerance: f32) -> bool {
+        if let Some(color) = self.get_color() {
+            color.distance_oklab(target_color) <= tolerance
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]

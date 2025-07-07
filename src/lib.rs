@@ -24,6 +24,8 @@ pub mod ffi;
 mod python;
 #[cfg(feature = "php")]
 mod php;
+pub mod blockpedia;
+pub mod region_operations;
 
 // Public re-exports
 pub use universal_schematic::UniversalSchematic;
@@ -39,3 +41,10 @@ pub use wasm::*;
 // Re-export PHP types when building with PHP feature
 #[cfg(feature = "php")]
 pub use php::*;
+
+// Re-export blockpedia integration types
+pub use blockpedia::{ColorAnalysis, BlockpediaError, SchematicTransforms, SchematicColorAnalysis};
+pub use region_operations::{RegionColorAnalysis, BatchOperation, RegionError};
+
+// Re-export blockpedia types for public use
+pub use ::blockpedia::{color::ExtendedColorData, transforms::{BlockShape, Rotation, Direction}};

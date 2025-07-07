@@ -84,17 +84,18 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
     } else {
         // Generate current timestamp based on platform
         #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-        let current_time = js_sys::Date::now() as i64;
+        {
+            use js_sys;
+            js_sys::Date::now() as i64
+        }
 
         #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-        let current_time = {
+        {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64
-        };
-
-        current_time
+        }
     };
 
     // Use existing modified timestamp or fall back to creation time

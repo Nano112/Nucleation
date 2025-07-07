@@ -1,0 +1,29 @@
+{
+  "name": "nucleation-wasm-tests",
+  "version": "1.0.0",
+  "description": "Test suite for Nucleation WASM bindings",
+  "type": "module",
+  "main": "test_runner.js",
+  "scripts": {
+    "test": "node test_runner.js",
+    "test:verbose": "node test_runner.js --verbose",
+    "build-wasm": "cd ../../../ && wasm-pack build --target bundler --out-dir wasm-test",
+    "setup": "npm run build-wasm && npm test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "wasm",
+    "minecraft",
+    "schematic",
+    "litematic",
+    "test"
+  ],
+  "author": "Nucleation Project",
+  "license": "MIT"
+}

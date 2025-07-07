@@ -24,13 +24,18 @@ pub mod ffi;
 mod python;
 #[cfg(feature = "php")]
 mod php;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod blockpedia;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod region_operations;
+pub mod api_definition;
+pub mod codegen;
 
 // Public re-exports
-pub use universal_schematic::UniversalSchematic;
+pub use universal_schematic::{UniversalSchematic, ContainerInfo};
 pub use block_state::BlockState;
 pub use region::Region;
+pub use entity::Entity;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic, format_json_schematic};
 
@@ -42,9 +47,12 @@ pub use wasm::*;
 #[cfg(feature = "php")]
 pub use php::*;
 
-// Re-export blockpedia integration types
+// Re-export blockpedia integration types (only for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 pub use blockpedia::{ColorAnalysis, BlockpediaError, SchematicTransforms, SchematicColorAnalysis};
+#[cfg(not(target_arch = "wasm32"))]
 pub use region_operations::{RegionColorAnalysis, BatchOperation, RegionError};
 
-// Re-export blockpedia types for public use
+// Re-export blockpedia types for public use (only for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 pub use ::blockpedia::{color::ExtendedColorData, transforms::{BlockShape, Rotation, Direction}};

@@ -1,0 +1,116 @@
+{
+  "platform": "python",
+  "timestamp": 1751860121.013847,
+  "results": {
+    "Schematic Creation": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.13591698370873928,
+        "memory_usage_bytes": null,
+        "block_count": 0,
+        "dimensions": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    "Litematic Loading": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.27304200921207666,
+        "memory_usage_bytes": 317,
+        "block_count": 1,
+        "dimensions": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    "Schematic Loading": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.05316597525961697,
+        "memory_usage_bytes": 338,
+        "block_count": 7,
+        "dimensions": [
+          2,
+          2,
+          2
+        ]
+      }
+    },
+    "Block Operations": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.009584007784724236,
+        "memory_usage_bytes": null,
+        "block_count": 2,
+        "dimensions": [
+          2,
+          1,
+          1
+        ]
+      }
+    },
+    "Format Conversion": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.16500000492669642,
+        "memory_usage_bytes": 244,
+        "block_count": 1,
+        "dimensions": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    "BlockState Operations": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.004291010554879904,
+        "memory_usage_bytes": null,
+        "block_count": 2,
+        "dimensions": null
+      }
+    },
+    "Free Functions": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.08620900916866958,
+        "memory_usage_bytes": null,
+        "block_count": 1,
+        "dimensions": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    "String Representations": {
+      "passed": true,
+      "error_message": null,
+      "metrics": {
+        "execution_time_ms": 0.004750007065013051,
+        "memory_usage_bytes": null,
+        "block_count": null,
+        "dimensions": null
+      }
+    }
+  },
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "total_time_ms": 0.7319590076804161,
+    "success_rate": 1.0
+  }
+}

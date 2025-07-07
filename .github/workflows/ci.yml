@@ -32,7 +32,7 @@ jobs:
       - name: Get current version
         id: version
         run: |
-          VERSION=$(grep -m1 'version = ' Cargo.toml | cut -d '"' -f2)
+          VERSION=$(grep -m1 'version = ' version.toml | cut -d '"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Found version: $VERSION"
 

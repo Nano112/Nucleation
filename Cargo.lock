@@ -614,7 +614,6 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
- "unicode-width 0.2.0",
  "windows-sys 0.59.0",
 ]
 
@@ -1947,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "nucleation"
-version = "0.1.48"
+version = "0.1.50"
 dependencies = [
  "blockpedia",
  "bytemuck",

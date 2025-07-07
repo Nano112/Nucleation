@@ -128,6 +128,8 @@ schematic_free(handle);
 
 ## 🔧 Development
 
+### Building
+
 ```bash
 # Build the Rust core
 cargo build --release
@@ -141,6 +143,25 @@ maturin develop --features python
 # Build FFI libs
 ./build-ffi.sh
 ```
+
+### Version Management
+
+Versions are centrally managed in `version.toml`. Use the Makefile commands:
+
+```bash
+# Check version consistency across all files
+make version-check
+
+# Bump versions automatically
+make version-bump-patch    # 0.1.0 → 0.1.1
+make version-bump-minor    # 0.1.0 → 0.2.0  
+make version-bump-major    # 0.1.0 → 1.0.0
+
+# Update all files from version.toml
+make version-update
+```
+
+📖 → [Full Version Management Guide](docs/VERSION_MANAGEMENT.md)
 
 ---
 

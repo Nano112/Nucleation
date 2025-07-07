@@ -230,6 +230,22 @@ pub fn to_schematic_v2(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     Ok(encoder.finish()?)
 }
 
+// Helper function to clean signal notation from block strings for WorldEdit compatibility
+fn clean_signal_notation(block_string: &str) -> String {
+    // If it contains a signal notation in NBT data, strip it
+    if let Some(nbt_start) = block_string.find('{') {
+        let (block_part, nbt_part) = block_string.split_at(nbt_start);
+        if nbt_part.contains("signal=") || nbt_part.contains("item=") {
+            // Return just the block part without NBT
+            block_part.to_string()
+        } else {
+            block_string.to_string()
+        }
+    } else {
+        block_string.to_string()
+    }
+}
+
 // Palette conversion for v3 (creates clean sequential indices)
 fn convert_palette(palette: &Vec<BlockState>) -> (NbtCompound, i32) {
     let (nbt_palette, _) = convert_palette_with_mapping(palette);
@@ -269,10 +285,13 @@ fn convert_palette_with_mapping(palette: &Vec<BlockState>) -> (NbtCompound, Vec<
                         .join(","))
         };
 
+        // Clean signal notation from key before adding to palette (fixes WorldEdit incompatibility)
+        let cleaned_key = clean_signal_notation(&key);
+        
         // Check if this block state already exists in the palette
         let mut found_id = None;
         for (existing_key, tag) in nbt_palette.inner() {
-            if existing_key == &key {
+            if existing_key == &cleaned_key {
                 if let NbtTag::Int(id) = tag {
                     found_id = Some(*id);
                     break;
@@ -283,7 +302,7 @@ fn convert_palette_with_mapping(palette: &Vec<BlockState>) -> (NbtCompound, Vec<
         let assigned_id = if let Some(id) = found_id {
             id
         } else {
-            nbt_palette.insert(&key, NbtTag::Int(next_id));
+            nbt_palette.insert(&cleaned_key, NbtTag::Int(next_id));
             let id = next_id;
             next_id += 1;
             id

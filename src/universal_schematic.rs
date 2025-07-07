@@ -1,6 +1,7 @@
 use crate::utils::{NbtMap, parse_custom_name, parse_items_array};
 use std::collections::HashMap;
 use quartz_nbt::{NbtCompound, NbtTag};
+#[cfg(not(target_arch = "wasm32"))]
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use crate::{BlockState};
@@ -12,6 +13,49 @@ use crate::entity::Entity;
 use crate::metadata::Metadata;
 use crate::region::Region;
 use crate::utils::NbtValue;
+
+/// Container type information for signal strength calculations
+#[derive(Debug, Clone)]
+pub struct ContainerInfo {
+    pub slots: u32,
+    pub max_stack_size: u32,
+}
+
+impl ContainerInfo {
+    pub fn from_container_type(container_type: &str) -> Self {
+        match container_type {
+            "minecraft:barrel" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:chest" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:trapped_chest" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:white_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:orange_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:magenta_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:light_blue_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:yellow_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:lime_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:pink_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:gray_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:light_gray_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:cyan_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:purple_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:blue_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:brown_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:green_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:red_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:black_shulker_box" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            "minecraft:hopper" => ContainerInfo { slots: 5, max_stack_size: 64 },
+            "minecraft:dispenser" => ContainerInfo { slots: 9, max_stack_size: 64 },
+            "minecraft:dropper" => ContainerInfo { slots: 9, max_stack_size: 64 },
+            "minecraft:furnace" => ContainerInfo { slots: 3, max_stack_size: 64 },
+            "minecraft:blast_furnace" => ContainerInfo { slots: 3, max_stack_size: 64 },
+            "minecraft:smoker" => ContainerInfo { slots: 3, max_stack_size: 64 },
+            "minecraft:brewing_stand" => ContainerInfo { slots: 5, max_stack_size: 64 },
+            "minecraft:ender_chest" => ContainerInfo { slots: 27, max_stack_size: 64 },
+            _ => ContainerInfo { slots: 27, max_stack_size: 64 }, // Default to chest-like
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UniversalSchematic {
@@ -568,6 +612,7 @@ impl UniversalSchematic {
                         a_dist.cmp(&b_dist)
                     });
                 },
+                #[cfg(not(target_arch = "wasm32"))]
                 ChunkLoadingStrategy::Random => {
                     // Shuffle the chunks using a deterministic seed
                     use std::hash::{Hash, Hasher};
@@ -584,6 +629,11 @@ impl UniversalSchematic {
                     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
                     use rand::seq::SliceRandom;
                     ordered_chunks.shuffle(&mut rng);
+                },
+                #[cfg(target_arch = "wasm32")]
+                ChunkLoadingStrategy::Random => {
+                    // For WASM, just reverse the order as a simple "randomization"
+                    ordered_chunks.reverse();
                 },
             }
         }
@@ -638,45 +688,6 @@ impl UniversalSchematic {
         Ok(true)
     }
 
-    /// Parses a block string into its components (block state and optional NBT data)
-    fn calculate_items_for_signal(signal_strength: u8) -> u32 {
-        if signal_strength == 0 {
-            return 0;
-        }
-
-        const BARREL_SLOTS: u32 = 27;
-        const MAX_STACK: u32 = 64;
-        const MAX_SIGNAL: u32 = 14;
-
-        let calculated = ((BARREL_SLOTS * MAX_STACK) as f64 / MAX_SIGNAL as f64)
-            * (signal_strength as f64 - 1.0);
-        let items_needed = calculated.ceil() as u32;
-
-        std::cmp::max(signal_strength as u32, items_needed)
-    }
-
-    /// Creates Items NBT data for a barrel to achieve desired signal strength
-    fn create_barrel_items_nbt(signal_strength: u8) -> Vec<NbtValue> {
-        let total_items = Self::calculate_items_for_signal(signal_strength);
-        let mut items = Vec::new();
-        let mut remaining_items = total_items;
-        let mut slot: u8 = 0;
-
-        while remaining_items > 0 {
-            let stack_size = std::cmp::min(remaining_items, 64) as u8;
-            let mut item_nbt = NbtMap::new();  // Using NbtMap instead of HashMap
-            item_nbt.insert("Count".to_string(), NbtValue::Byte(stack_size as i8));
-            item_nbt.insert("Slot".to_string(), NbtValue::Byte(slot as i8));
-            item_nbt.insert("id".to_string(), NbtValue::String("minecraft:redstone_block".to_string()));
-
-            items.push(NbtValue::Compound(item_nbt));
-
-            remaining_items -= stack_size as u32;
-            slot += 1;
-        }
-
-        items
-    }
     /// Parse a block string into its components, handling special signal strength case
     pub fn parse_block_string(block_string: &str) -> Result<(BlockState, Option<HashMap<String, NbtValue>>), String> {
         let mut parts = block_string.splitn(2, '{');
@@ -710,16 +721,27 @@ impl UniversalSchematic {
             let mut nbt_map = HashMap::new();
 
             // Check for signal strength specification
-            if block_state.get_name() == "minecraft:barrel" && nbt_str.contains("signal=") {
-                if let Some(signal_str) = nbt_str.split('=').nth(1) {
-                    let signal_strength: u8 = signal_str.trim().parse()
+            if Self::is_container_block(&block_state.get_name()) && nbt_str.contains("signal=") {
+                if let Some(signal_part) = nbt_str.split('=').nth(1) {
+                    let signal_str = signal_part.split(',').next().unwrap_or(signal_part).trim();
+                    let signal_strength: u8 = signal_str.parse()
                         .map_err(|_| "Invalid signal strength value")?;
 
                     if signal_strength > 15 {
                         return Err("Signal strength must be between 0 and 15".to_string());
                     }
 
-                    let items = Self::create_barrel_items_nbt(signal_strength);
+                    // Extract item type from signal notation if specified
+                    let item_type = if nbt_str.contains("item=") {
+                        nbt_str.split("item=").nth(1)
+                            .and_then(|s| s.split(',').next()
+                                .or_else(|| s.split('}').next()))
+                            .map(|s| s.trim())
+                    } else {
+                        None
+                    };
+
+                    let items = Self::create_container_items_nbt(signal_strength, &block_state.get_name(), item_type);
                     nbt_map.insert("Items".to_string(), NbtValue::List(items));
                 }
             } else {
@@ -741,6 +763,92 @@ impl UniversalSchematic {
         };
 
         Ok((block_state, nbt_data))
+    }
+
+    /// Calculates items needed for a specific signal strength in a container
+    fn calculate_items_for_signal_container(signal_strength: u8, container_type: &str) -> u32 {
+        if signal_strength == 0 {
+            return 0;
+        }
+
+        let container_info = ContainerInfo::from_container_type(container_type);
+        const MAX_SIGNAL: u32 = 15; // Redstone signal goes from 0-15
+
+        let max_items = container_info.slots * container_info.max_stack_size;
+        let calculated = (max_items as f64 / (MAX_SIGNAL - 1) as f64) * (signal_strength - 1) as f64;
+        let items_needed = calculated.ceil() as u32;
+
+        std::cmp::max(signal_strength as u32, items_needed)
+    }
+
+    /// Legacy function for backwards compatibility
+    fn calculate_items_for_signal(signal_strength: u8) -> u32 {
+        Self::calculate_items_for_signal_container(signal_strength, "minecraft:barrel")
+    }
+
+    /// Creates Items NBT data for a container to achieve desired signal strength
+    fn create_container_items_nbt(signal_strength: u8, container_type: &str, item_type: Option<&str>) -> Vec<NbtValue> {
+        let total_items = Self::calculate_items_for_signal_container(signal_strength, container_type);
+        let container_info = ContainerInfo::from_container_type(container_type);
+        let mut items = Vec::new();
+        let mut remaining_items = total_items;
+        let mut slot: u8 = 0;
+        
+        let item_id = item_type.unwrap_or("minecraft:redstone_block");
+
+        while remaining_items > 0 && slot < container_info.slots as u8 {
+            let stack_size = std::cmp::min(remaining_items, container_info.max_stack_size) as u8;
+            let mut item_nbt = NbtMap::new();
+            item_nbt.insert("Count".to_string(), NbtValue::Byte(stack_size as i8));
+            item_nbt.insert("Slot".to_string(), NbtValue::Byte(slot as i8));
+            item_nbt.insert("id".to_string(), NbtValue::String(item_id.to_string()));
+
+            items.push(NbtValue::Compound(item_nbt));
+
+            remaining_items -= stack_size as u32;
+            slot += 1;
+        }
+
+        items
+    }
+
+    /// Legacy function for backwards compatibility
+    fn create_barrel_items_nbt(signal_strength: u8) -> Vec<NbtValue> {
+        Self::create_container_items_nbt(signal_strength, "minecraft:barrel", None)
+    }
+
+    /// Check if a block is a container that supports signal strength notation
+    fn is_container_block(block_name: &str) -> bool {
+        matches!(block_name,
+            "minecraft:barrel" |
+            "minecraft:chest" |
+            "minecraft:trapped_chest" |
+            "minecraft:shulker_box" |
+            "minecraft:white_shulker_box" |
+            "minecraft:orange_shulker_box" |
+            "minecraft:magenta_shulker_box" |
+            "minecraft:light_blue_shulker_box" |
+            "minecraft:yellow_shulker_box" |
+            "minecraft:lime_shulker_box" |
+            "minecraft:pink_shulker_box" |
+            "minecraft:gray_shulker_box" |
+            "minecraft:light_gray_shulker_box" |
+            "minecraft:cyan_shulker_box" |
+            "minecraft:purple_shulker_box" |
+            "minecraft:blue_shulker_box" |
+            "minecraft:brown_shulker_box" |
+            "minecraft:green_shulker_box" |
+            "minecraft:red_shulker_box" |
+            "minecraft:black_shulker_box" |
+            "minecraft:hopper" |
+            "minecraft:dispenser" |
+            "minecraft:dropper" |
+            "minecraft:furnace" |
+            "minecraft:blast_furnace" |
+            "minecraft:smoker" |
+            "minecraft:brewing_stand" |
+            "minecraft:ender_chest"
+        )
     }
 
     pub fn create_schematic_from_region(&self, bounds: &BoundingBox) -> Self {
@@ -1317,5 +1425,102 @@ mod tests {
             let expected_items = UniversalSchematic::calculate_items_for_signal(7);
             assert_eq!(total_items as u32, expected_items);
         }
+    }
+
+    #[test]
+    fn test_generalized_container_signal_notation() {
+        let mut schematic = UniversalSchematic::new("Test".to_string());
+
+        // Test chest with signal notation
+        let chest_str = "minecraft:chest{signal=5}";
+        assert!(schematic.set_block_from_string(0, 0, 0, chest_str).unwrap());
+
+        // Test hopper with signal notation
+        let hopper_str = "minecraft:hopper{signal=3}";
+        assert!(schematic.set_block_from_string(1, 0, 0, hopper_str).unwrap());
+
+        // Test shulker box with signal notation
+        let shulker_str = "minecraft:red_shulker_box{signal=10}";
+        assert!(schematic.set_block_from_string(2, 0, 0, shulker_str).unwrap());
+
+        // Verify blocks were set correctly
+        assert_eq!(schematic.get_block(0, 0, 0).unwrap().get_name(), "minecraft:chest");
+        assert_eq!(schematic.get_block(1, 0, 0).unwrap().get_name(), "minecraft:hopper");
+        assert_eq!(schematic.get_block(2, 0, 0).unwrap().get_name(), "minecraft:red_shulker_box");
+
+        // Verify items were added with correct counts for each container type
+        let chest_entity = schematic.get_block_entity(BlockPosition { x: 0, y: 0, z: 0 }).unwrap();
+        let chest_items = chest_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = chest_items {
+            assert!(!items.is_empty(), "Chest should have items for signal strength");
+        }
+
+        let hopper_entity = schematic.get_block_entity(BlockPosition { x: 1, y: 0, z: 0 }).unwrap();
+        let hopper_items = hopper_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = hopper_items {
+            assert!(!items.is_empty(), "Hopper should have items for signal strength");
+        }
+
+        let shulker_entity = schematic.get_block_entity(BlockPosition { x: 2, y: 0, z: 0 }).unwrap();
+        let shulker_items = shulker_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = shulker_items {
+            assert!(!items.is_empty(), "Shulker box should have items for signal strength");
+        }
+    }
+
+    #[test]
+    fn test_container_signal_with_custom_item() {
+        let mut schematic = UniversalSchematic::new("Test".to_string());
+
+        // Test with custom item type
+        let chest_str = "minecraft:chest{signal=5,item=minecraft:diamond}";
+        assert!(schematic.set_block_from_string(0, 0, 0, chest_str).unwrap());
+
+        let chest_entity = schematic.get_block_entity(BlockPosition { x: 0, y: 0, z: 0 }).unwrap();
+        let items = chest_entity.nbt.get("Items").unwrap();
+        if let NbtValue::List(items) = items {
+            assert!(!items.is_empty(), "Chest should have items");
+            
+            // Check that the item type is correct
+            if let NbtValue::Compound(item) = &items[0] {
+                assert_eq!(
+                    item.get("id").unwrap(),
+                    &NbtValue::String("minecraft:diamond".to_string())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_container_info_configuration() {
+        // Test different container types have correct slot counts
+        let barrel_info = ContainerInfo::from_container_type("minecraft:barrel");
+        assert_eq!(barrel_info.slots, 27);
+        assert_eq!(barrel_info.max_stack_size, 64);
+
+        let hopper_info = ContainerInfo::from_container_type("minecraft:hopper");
+        assert_eq!(hopper_info.slots, 5);
+        assert_eq!(hopper_info.max_stack_size, 64);
+
+        let dispenser_info = ContainerInfo::from_container_type("minecraft:dispenser");
+        assert_eq!(dispenser_info.slots, 9);
+        assert_eq!(dispenser_info.max_stack_size, 64);
+
+        let furnace_info = ContainerInfo::from_container_type("minecraft:furnace");
+        assert_eq!(furnace_info.slots, 3);
+        assert_eq!(furnace_info.max_stack_size, 64);
+    }
+
+    #[test]
+    fn test_signal_strength_calculation_different_containers() {
+        // Test that different container types calculate items correctly
+        let barrel_items = UniversalSchematic::calculate_items_for_signal_container(14, "minecraft:barrel");
+        let hopper_items = UniversalSchematic::calculate_items_for_signal_container(14, "minecraft:hopper");
+        let dispenser_items = UniversalSchematic::calculate_items_for_signal_container(14, "minecraft:dispenser");
+
+        // Higher capacity containers should need more items for the same signal strength
+        assert!(barrel_items > hopper_items);
+        assert!(barrel_items > dispenser_items);
+        assert!(dispenser_items > hopper_items);
     }
 }

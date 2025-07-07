@@ -3,6 +3,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use quartz_nbt::{NbtCompound, NbtTag};
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use blockpedia::{
     BlockState as BlockpediaBlockState, 
     get_block,
@@ -111,12 +112,14 @@ impl BlockState {
 
     // === Blockpedia Integration ===
 
-    /// Get the blockpedia BlockFacts for this block
+    /// Get the blockpedia BlockFacts for this block (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_facts(&self) -> Option<&'static blockpedia::BlockFacts> {
         get_block(&self.name)
     }
 
-    /// Get the color information for this block
+    /// Get the color information for this block (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_color(&self) -> Option<ExtendedColorData> {
         self.get_facts()
             .and_then(|facts| facts.extras.color)
@@ -128,7 +131,8 @@ impl BlockState {
         self.properties.contains_key(property)
     }
 
-    /// Convert to blockpedia BlockState for transformations
+    /// Convert to blockpedia BlockState for transformations (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn to_blockpedia(&self) -> Result<BlockpediaBlockState, String> {
         let mut blockpedia_block = BlockpediaBlockState::new(&self.name)
             .map_err(|e| e.to_string())?;
@@ -141,7 +145,8 @@ impl BlockState {
         Ok(blockpedia_block)
     }
 
-    /// Create from blockpedia BlockState
+    /// Create from blockpedia BlockState (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_blockpedia(blockpedia_block: &BlockpediaBlockState) -> Self {
         let block_string = blockpedia_block.to_string();
         
@@ -170,7 +175,8 @@ impl BlockState {
 
     // === Block Transformations ===
 
-    /// Rotate this block state by 90 degrees clockwise
+    /// Rotate this block state by 90 degrees clockwise (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn rotate_clockwise(&self) -> Result<BlockState, String> {
         let blockpedia_block = self.to_blockpedia()?;
         let rotated = blockpedia_block.rotate_clockwise()
@@ -178,7 +184,8 @@ impl BlockState {
         Ok(Self::from_blockpedia(&rotated))
     }
 
-    /// Rotate this block state by 180 degrees
+    /// Rotate this block state by 180 degrees (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn rotate_180(&self) -> Result<BlockState, String> {
         let blockpedia_block = self.to_blockpedia()?;
         let rotated = blockpedia_block.rotate_180()
@@ -186,7 +193,8 @@ impl BlockState {
         Ok(Self::from_blockpedia(&rotated))
     }
 
-    /// Rotate this block state by 270 degrees clockwise (90 counter-clockwise)
+    /// Rotate this block state by 270 degrees clockwise (90 counter-clockwise) (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn rotate_counter_clockwise(&self) -> Result<BlockState, String> {
         let blockpedia_block = self.to_blockpedia()?;
         let rotated = blockpedia_block.rotate_counter_clockwise()
@@ -194,7 +202,8 @@ impl BlockState {
         Ok(Self::from_blockpedia(&rotated))
     }
 
-    /// Get a material variant of this block (e.g., oak_stairs -> stone_stairs)
+    /// Get a material variant of this block (e.g., oak_stairs -> stone_stairs) (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn with_material(&self, material: &str) -> Result<BlockState, String> {
         let blockpedia_block = self.to_blockpedia()?;
         let transformed = blockpedia_block.with_material(material)
@@ -202,7 +211,8 @@ impl BlockState {
         Ok(Self::from_blockpedia(&transformed))
     }
 
-    /// Get a shape variant of this block (e.g., stone -> stone_stairs)
+    /// Get a shape variant of this block (e.g., stone -> stone_stairs) (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn with_shape(&self, shape: BlockShape) -> Result<BlockState, String> {
         let blockpedia_block = self.to_blockpedia()?;
         let transformed = blockpedia_block.with_shape(shape)
@@ -210,21 +220,24 @@ impl BlockState {
         Ok(Self::from_blockpedia(&transformed))
     }
 
-    /// Find all available material variants for this block's shape
+    /// Find all available material variants for this block's shape (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn available_materials(&self) -> Result<Vec<String>, String> {
         let blockpedia_block = self.to_blockpedia()?;
         blockpedia_block.available_materials()
             .map_err(|e| e.to_string())
     }
 
-    /// Find all available shape variants for this block's material
+    /// Find all available shape variants for this block's material (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn available_shapes(&self) -> Result<Vec<BlockShape>, String> {
         let blockpedia_block = self.to_blockpedia()?;
         blockpedia_block.available_shapes()
             .map_err(|e| e.to_string())
     }
 
-    /// Check if this block matches a color within a given tolerance
+    /// Check if this block matches a color within a given tolerance (only available for non-WASM targets)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn matches_color(&self, target_color: &ExtendedColorData, tolerance: f32) -> bool {
         if let Some(color) = self.get_color() {
             color.distance_oklab(target_color) <= tolerance

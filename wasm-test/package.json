@@ -1,16 +1,32 @@
 {
-  "name": "schematic-utils",
-  "module": "server.js",
+  "name": "nucleation",
   "type": "module",
-  "scripts": {
-    "build-wasm": "cd .. && ./build-wasm.sh",
-    "serve": "bun run server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "collaborators": [
+    "Nano nano@schem.at"
+  ],
+  "description": "A high-performance Minecraft schematic parser and utility library",
+  "version": "0.1.49",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Schem-at/Nucleation"
   },
-  "devDependencies": {
-    "bun-types": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  }
+  "files": [
+    "nucleation_bg.wasm",
+    "nucleation.js",
+    "nucleation_bg.js",
+    "nucleation.d.ts"
+  ],
+  "main": "nucleation.js",
+  "types": "nucleation.d.ts",
+  "sideEffects": [
+    "./nucleation.js",
+    "./snippets/*"
+  ],
+  "keywords": [
+    "minecraft",
+    "schematic",
+    "parser",
+    "voxel"
+  ]
 }

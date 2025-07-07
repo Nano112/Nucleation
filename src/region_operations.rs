@@ -5,6 +5,7 @@
 //! and intelligent block operations.
 
 use crate::{BlockState, Region};
+#[cfg(not(target_arch = "wasm32"))]
 use blockpedia::{
     color::ExtendedColorData,
     transforms::BlockShape,
@@ -28,7 +29,8 @@ pub enum RegionError {
 
 pub type Result<T> = std::result::Result<T, RegionError>;
 
-/// Color analysis results for a region
+/// Color analysis results for a region (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone)]
 pub struct RegionColorAnalysis {
     pub dominant_colors: Vec<ExtendedColorData>,
@@ -39,7 +41,8 @@ pub struct RegionColorAnalysis {
     pub coverage_percentage: f32,
 }
 
-/// Batch transformation operation
+/// Batch transformation operation (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone)]
 pub enum BatchOperation {
     ReplaceMaterial { from: String, to: String },
@@ -48,7 +51,8 @@ pub enum BatchOperation {
     CustomTransform { predicate: String, transform: String }, // Simplified for now
 }
 
-/// Enhanced region operations
+/// Enhanced region operations (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 impl Region {
     /// Analyze the color composition of this region
     pub fn analyze_colors(&self) -> Result<RegionColorAnalysis> {
@@ -317,7 +321,8 @@ impl Region {
     }
 }
 
-/// Convert Nucleation BlockState to Blockpedia BlockState
+/// Convert Nucleation BlockState to Blockpedia BlockState (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 fn nucleation_to_blockpedia_block(nucleation_block: &BlockState) -> Result<BlockpediaBlockState> {
     // Parse the block name and properties into blockpedia format
     let mut blockpedia_block = BlockpediaBlockState::new(&nucleation_block.name)
@@ -332,7 +337,8 @@ fn nucleation_to_blockpedia_block(nucleation_block: &BlockState) -> Result<Block
     Ok(blockpedia_block)
 }
 
-/// Convert Blockpedia BlockState to Nucleation BlockState
+/// Convert Blockpedia BlockState to Nucleation BlockState (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 fn blockpedia_to_nucleation_block(blockpedia_block: &BlockpediaBlockState) -> BlockState {
     let block_string = blockpedia_block.to_string();
     
@@ -363,7 +369,8 @@ fn blockpedia_to_nucleation_block(blockpedia_block: &BlockpediaBlockState) -> Bl
     }
 }
 
-/// Find the most dominant colors in a collection
+/// Find the most dominant colors in a collection (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 fn find_dominant_colors(colors: &[ExtendedColorData], count: usize) -> Vec<ExtendedColorData> {
     let mut color_counts: HashMap<String, (ExtendedColorData, usize)> = HashMap::new();
     
@@ -382,7 +389,8 @@ fn find_dominant_colors(colors: &[ExtendedColorData], count: usize) -> Vec<Exten
         .collect()
 }
 
-/// Calculate a harmony score for a collection of colors
+/// Calculate a harmony score for a collection of colors (only available for non-WASM targets)
+#[cfg(not(target_arch = "wasm32"))]
 fn calculate_harmony_score(colors: &[ExtendedColorData]) -> f32 {
     if colors.len() < 2 {
         return 1.0;
@@ -420,6 +428,7 @@ mod tests {
         assert!(true);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_batch_operations() {
         let operations = vec![

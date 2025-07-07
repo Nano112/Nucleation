@@ -186,16 +186,18 @@ jobs:
       - name: Install cross-compilation tools (ARM64 Linux)
         if: matrix.cross
         run: |
+          # Install base cross-compilation tools
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
           
-          # Set up multiarch for ARM64 packages
-          sudo dpkg --add-architecture arm64
-          sudo apt-get update
+          # Try to set up multiarch for ARM64 packages, but don't fail if repositories have issues
+          sudo dpkg --add-architecture arm64 || echo "Warning: Could not add arm64 architecture"
+          sudo apt-get update || echo "Warning: apt update failed after adding arm64 architecture"
           
-          # Install OpenSSL development files for ARM64
-          sudo apt-get install -y libssl-dev:arm64 pkg-config || {
-            echo "Warning: Could not install ARM64 OpenSSL, will use vendored version"
+          # Try to install OpenSSL development files for ARM64, but continue if it fails
+          sudo apt-get install -y libssl-dev:arm64 pkg-config 2>/dev/null || {
+            echo "Warning: Could not install ARM64 OpenSSL from repositories, will use vendored version"
+            echo "This is expected if ARM64 packages are not available in all repositories"
           }
           
           # Configure Cargo for cross-compilation
@@ -223,18 +225,24 @@ jobs:
           CXX: aarch64-linux-gnu-g++
           AR: aarch64-linux-gnu-ar
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          # OpenSSL cross-compilation environment
+          # OpenSSL cross-compilation environment - use vendored by default
           PKG_CONFIG_ALLOW_CROSS: '1'
-          OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
-          OPENSSL_INCLUDE_DIR: /usr/include/aarch64-linux-gnu
+          # Use vendored OpenSSL as primary strategy since ARM64 packages may not be available
+          OPENSSL_NO_VENDOR: '0'
           # Force static linking to avoid runtime dependencies
           OPENSSL_STATIC: '1'
-          # Use vendored OpenSSL for cross-compilation as fallback
-          OPENSSL_NO_VENDOR: '0'
-          # Additional environment for cross-compilation
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR: /usr/include/aarch64-linux-gnu
-        run: cargo build --release --target ${{ matrix.target }} --features ffi
+        run: |
+          # Only set OpenSSL paths if the directories actually exist
+          if [ -d "/usr/lib/aarch64-linux-gnu" ] && [ -d "/usr/include/aarch64-linux-gnu" ]; then
+            echo "Found ARM64 system OpenSSL, setting paths"
+            export OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
+            export OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu
+          else
+            echo "ARM64 system OpenSSL not found, using vendored OpenSSL"
+          fi
+          cargo build --release --target ${{ matrix.target }} --features ffi
 
       - name: Build nucleation native library (native)
         if: "!matrix.cross"

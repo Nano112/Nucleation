@@ -48,11 +48,10 @@ wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = tru
 js-sys = { version = "0.3.70", optional = true }
 serde-wasm-bindgen = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["console"] }
-
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+blockpedia = { path = "/Users/harrison/Documents/code/blockpedia/warp/blockpedia", features = ["use-prebuilt"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1.40"
-blockpedia = "0.1.1"
 
 # Python dependencies
 maturin = { version = "1", optional = true, default-features = false }

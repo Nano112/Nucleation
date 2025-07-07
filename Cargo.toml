@@ -1,6 +1,6 @@
 [package]
 name = "nucleation"
-version = "0.1.55"
+version = "0.1.56"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
 authors = ["Nano <nano@schem.at>"]
@@ -49,7 +49,7 @@ js-sys = { version = "0.3.70", optional = true }
 serde-wasm-bindgen = { version = "0.4", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["console"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-blockpedia = { path = "/Users/harrison/Documents/code/blockpedia/warp/blockpedia", features = ["use-prebuilt"] }
+blockpedia = { version = "0.1.2", features = ["use-prebuilt"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1.40"
 

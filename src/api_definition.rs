@@ -133,7 +133,7 @@ pub struct ApiDefinition {
 pub fn nucleation_api() -> ApiDefinition {
     ApiDefinition {
         name: "nucleation".to_string(),
-        version: "0.1.50".to_string(),
+        version: "0.1.51".to_string(),
         docs: "A high-performance Minecraft schematic parser and utility library".to_string(),
         classes: vec![
             block_state_class(),

@@ -32,10 +32,11 @@ pub mod api_definition;
 pub mod codegen;
 
 // Public re-exports
-pub use universal_schematic::{UniversalSchematic, ContainerInfo};
+pub use universal_schematic::{UniversalSchematic, ContainerInfo, ChunkLoadingStrategy};
 pub use block_state::BlockState;
 pub use region::Region;
 pub use entity::Entity;
+pub use bounding_box::BoundingBox;
 pub use formats::{litematic, schematic};
 pub use print_utils::{format_schematic, format_json_schematic};
 

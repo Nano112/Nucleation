@@ -1,4 +1,5 @@
 /target
 /tests/output/*
 /pkg/
+/wasm-test/node_modules/
 /tests/bindings/js/node_modules/

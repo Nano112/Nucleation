@@ -1,6 +1,6 @@
 [package]
 name = "nucleation"
-version = "0.1.50"
+version = "0.1.51"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
 authors = ["Nano nano@schem.at"]
@@ -27,6 +27,8 @@ python = ["pyo3/extension-module"]
 php = ["ext-php-rs"]
 # Binding generation feature
 generate-bindings = []
+# Blockpedia integration feature (not available for WASM)
+blockpedia = []
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

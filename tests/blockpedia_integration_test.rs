@@ -3,7 +3,7 @@
 //! These tests verify that the blockpedia integration works correctly
 //! when the blockpedia feature is enabled.
 
-#[cfg(feature = "blockpedia")]
+#[cfg(not(target_arch = "wasm32"))]
 mod blockpedia_tests {
     use nucleation::{UniversalSchematic, BlockState};
     use nucleation::blockpedia::{ColorAnalysis, BlockpediaError};

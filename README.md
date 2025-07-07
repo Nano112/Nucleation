@@ -9,19 +9,22 @@
 [![Crates.io](https://img.shields.io/crates/v/nucleation.svg)](https://crates.io/crates/nucleation)
 [![npm](https://img.shields.io/npm/v/nucleation.svg)](https://www.npmjs.com/package/nucleation)
 [![PyPI](https://img.shields.io/pypi/v/nucleation.svg)](https://pypi.org/project/nucleation)
+[![CI/CD](https://github.com/Schem-at/Nucleation/workflows/Nucleation%20CI%2FCD/badge.svg)](https://github.com/Schem-at/Nucleation/actions)
 
 ---
 
 ## ✨ Features
 
-- ✅ Multi-format support: `.schematic`, `.litematic`, `.nbt`, etc.
-- 🧠 Memory-safe Rust core with zero-copy deserialization
-- 🌐 WASM module for browser + Node.js
-- 🐍 Native Python bindings (`pip install nucleation`)
-- ⚙️ C-compatible FFI for PHP, C, Go, etc.
-- 🔄 Feature parity across all interfaces
-- 📦 Binary builds for Linux, macOS, Windows (x86_64 + ARM64)
-- 🧱 Seamless integration with [Cubane](https://github.com/Nano112/cubane)
+- ✅ **Multi-format support**: `.schematic`, `.litematic`, `.nbt`, etc.
+- 🧠 **Memory-safe Rust core** with zero-copy deserialization
+- 🌐 **WASM module** for browser + Node.js with TypeScript support
+- 🐍 **Native Python bindings** (`pip install nucleation`)
+- ⚙️ **C-compatible FFI** for PHP, C, Go, etc.
+- 🎨 **Blockpedia integration** for color analysis and block transformations (native targets)
+- 🔄 **Feature parity** across all interfaces via single API definition
+- 📦 **Binary builds** for Linux, macOS, Windows (x86_64 + ARM64)
+- 🚀 **Automatic binding generation** from centralized API definitions
+- 🧪 **Comprehensive test suite** with CI/CD pipeline
 
 ---
 
@@ -69,7 +72,7 @@ schematic.load_from_data(&bytes)?;
 println!("{:?}", schematic.get_info());
 ```
 
-📖 → [More in `examples/rust.md`](examples/rust.md)
+📖 → [Documentation](examples/rust.md) | [Complete Code Example](examples/rust_example.rs)
 
 ---
 
@@ -85,7 +88,7 @@ await parser.fromData(new Uint8Array(bytes));
 console.log(parser.getDimensions());
 ```
 
-📖 → [More in `examples/wasm.md`](examples/wasm.md)
+📖 → [Documentation](examples/wasm.md) | [Complete Code Example](examples/wasm_example.js)
 
 ---
 
@@ -103,7 +106,7 @@ schem.load_from_bytes(data)
 print(schem.get_info())
 ```
 
-📖 → [More in `examples/python.md`](examples/python.md)
+📖 → [Documentation](examples/python.md) | [Complete Code Example](examples/python_example.py)
 
 ---
 
@@ -122,7 +125,7 @@ printf("Size: %dx%dx%d\n", info.width, info.height, info.depth);
 schematic_free(handle);
 ```
 
-📖 → [More in `examples/ffi.md`](examples/ffi.md)
+📖 → [Documentation](examples/ffi.md) | [Complete Code Example](examples/ffi_example.c)
 
 ---
 
@@ -134,7 +137,8 @@ schematic_free(handle);
 # Build the Rust core
 cargo build --release
 
-# Build WASM module
+# Build WASM module with target support
+cargo build --target wasm32-unknown-unknown --features wasm
 ./build-wasm.sh
 
 # Build Python bindings locally
@@ -143,6 +147,43 @@ maturin develop --features python
 # Build FFI libs
 ./build-ffi.sh
 ```
+
+### 🤖 Automated Binding Generation
+
+Nucleation uses a **single source of truth** approach for all bindings. The API is defined once in `src/api_definition.rs` and automatically translated to all supported languages:
+
+```bash
+# Generate all binding files from API definition
+cargo run --bin generate-bindings
+
+# Check if bindings are up to date
+cargo run --bin generate-bindings check
+
+# Generate API documentation report
+cargo run --bin generate-bindings report
+```
+
+This generates:
+- **WASM**: TypeScript definitions and JavaScript bindings
+- **Python**: PyO3 bindings and `.pyi` type stubs  
+- **FFI**: C header files and Rust FFI implementations
+
+### 🧪 Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Test specific targets
+cargo test --features wasm --test wasm_tests        # WASM tests
+cargo test --test python_tests                      # Python tests
+cargo test --test blockpedia_integration_test       # Blockpedia tests (non-WASM only)
+
+# Test WASM build specifically
+cargo build --target wasm32-unknown-unknown --features wasm
+```
+
+**Note**: WASM builds exclude blockpedia features for compatibility. Color analysis and block transformations are available only on native targets.
 
 ### Version Management
 
@@ -167,17 +208,17 @@ make version-update
 
 ## 📚 Submodules & Bindings
 
-### Rust
-* [`examples/rust.md`](examples/rust.md)
+### 📄 Documentation & Examples
 
-### JavaScript/TypeScript
-* [`examples/wasm.md`](examples/wasm.md)
+Each binding includes comprehensive documentation and working code examples:
 
-### Python
-* [`examples/python.md`](examples/python.md)
+| Language | API Documentation | Working Example | Type Definitions |
+|----------|------------------|-----------------|------------------|
+| **Rust** | [`examples/rust.md`](examples/rust.md) | [`examples/rust_example.rs`](examples/rust_example.rs) | Native Rust docs |
+| **JavaScript/WASM** | [`examples/wasm.md`](examples/wasm.md) | [`examples/wasm_example.js`](examples/wasm_example.js) | [`pkg/nucleation.d.ts`](pkg/nucleation.d.ts) |
+| **Python** | [`examples/python.md`](examples/python.md) | [`examples/python_example.py`](examples/python_example.py) | [`python-stubs/nucleation.pyi`](python-stubs/nucleation.pyi) |
+| **C/FFI** | [`examples/ffi.md`](examples/ffi.md) | [`examples/ffi_example.c`](examples/ffi_example.c) | [`include/nucleation.h`](include/nucleation.h) |
 
-### FFI (C/PHP)
-* [`examples/ffi.md`](examples/ffi.md)
 
 ---
 

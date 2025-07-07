@@ -64,6 +64,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          target: wasm32-unknown-unknown
       - uses: actions/cache@v4
         with:
           path: |
@@ -71,9 +72,14 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run tests
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Run default tests
         run: |
-          cargo test  # Test default (no features) 
+          cargo test --lib  # Test library with default features
+      - name: Run WASM tests
+        run: |
+          cargo test --test wasm_tests --features wasm
   build-wasm:
     needs: [test, check-version]
     runs-on: ubuntu-latest

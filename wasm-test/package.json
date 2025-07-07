@@ -2,7 +2,7 @@
   "name": "nucleation",
   "type": "module",
   "collaborators": [
-    "Nano nano@schem.at"
+    "Nano <nano@schem.at>"
   ],
   "description": "A high-performance Minecraft schematic parser and utility library",
   "version": "0.1.51",

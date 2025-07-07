@@ -1,9 +1,9 @@
 [package]
 name = "nucleation"
-version = "0.1.51"
+version = "0.1.52"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
-authors = ["Nano nano@schem.at"]
+authors = ["Nano <nano@schem.at>"]
 license = "AGPL-3.0-only"
 repository = "https://github.com/Schem-at/Nucleation"
 readme = "README.md"

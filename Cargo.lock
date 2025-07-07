@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "nucleation"
-version = "0.1.53"
+version = "0.1.54"
 dependencies = [
  "blockpedia",
  "bytemuck",

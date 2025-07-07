@@ -215,24 +215,32 @@ jobs:
           OPENSSL_LIB_DIR_aarch64_unknown_linux_gnu = "/usr/lib/aarch64-linux-gnu"
           EOF
 
-      - name: Build nucleation native library
+      - name: Build nucleation native library (cross-compile)
+        if: matrix.cross
         env:
           # Set cross-compilation environment variables
-          CC: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
-          CXX: ${{ matrix.cross && 'aarch64-linux-gnu-g++' || '' }}
-          AR: ${{ matrix.cross && 'aarch64-linux-gnu-ar' || '' }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
+          CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
+          AR: aarch64-linux-gnu-ar
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           # OpenSSL cross-compilation environment
-          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.cross && '1' || '' }}
-          OPENSSL_LIB_DIR: ${{ matrix.cross && '/usr/lib/aarch64-linux-gnu' || '' }}
-          OPENSSL_INCLUDE_DIR: ${{ matrix.cross && '/usr/include/aarch64-linux-gnu' || '' }}
+          PKG_CONFIG_ALLOW_CROSS: '1'
+          OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
+          OPENSSL_INCLUDE_DIR: /usr/include/aarch64-linux-gnu
           # Force static linking to avoid runtime dependencies
-          OPENSSL_STATIC: ${{ matrix.cross && '1' || '' }}
+          OPENSSL_STATIC: '1'
           # Use vendored OpenSSL for cross-compilation as fallback
           OPENSSL_NO_VENDOR: '0'
           # Additional environment for cross-compilation
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR: ${{ matrix.cross && '/usr/lib/aarch64-linux-gnu' || '' }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR: ${{ matrix.cross && '/usr/include/aarch64-linux-gnu' || '' }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR: /usr/lib/aarch64-linux-gnu
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR: /usr/include/aarch64-linux-gnu
+        run: cargo build --release --target ${{ matrix.target }} --features ffi
+
+      - name: Build nucleation native library (native)
+        if: "!matrix.cross"
+        env:
+          # Use vendored OpenSSL as fallback for all builds
+          OPENSSL_NO_VENDOR: '0'
         run: cargo build --release --target ${{ matrix.target }} --features ffi
 
       - name: Move nucleation library output

@@ -1,6 +1,6 @@
 [package]
 name = "nucleation"
-version = "0.1.62"
+version = "0.1.63"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
 authors = ["Nano nano@schem.at"]
@@ -62,7 +62,7 @@ criterion = "0.5.1"
 num-complex = "0.4"
 
 [[bench]]
-name = "schematic_bench"
+name = "performance_test"
 harness = false
 
 [profile.bench]

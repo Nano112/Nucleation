@@ -12,6 +12,7 @@ use crate::{
 };
 use std::collections::HashMap;
 use crate::bounding_box::BoundingBox;
+use crate::schematic::SchematicVersion;
 use crate::universal_schematic::ChunkLoadingStrategy;
 
 #[wasm_bindgen(start)]
@@ -72,15 +73,27 @@ impl SchematicWrapper {
             .map_err(|e| JsValue::from_str(&format!("Schematic conversion error: {}", e)))
     }
 
-    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {
-        self.0.set_block(x, y, z, BlockState::new(block_name.to_string()));
+    pub fn to_schematic_version(&self, version: &str) -> Result<Vec<u8>, JsValue> {
+        schematic::to_schematic_version(&self.0, SchematicVersion::from_str(version)
+            .map_err(|e| JsValue::from_str(&format!("Invalid schematic version: {}", e)))?)
+            .map_err(|e| JsValue::from_str(&format!("Schematic conversion error: {}", e)))
     }
 
-    pub fn set_block_from_string(&mut self, x: i32, y: i32, z: i32, block_string: &str) -> Result<(), JsValue> {
-        self.0.set_block_from_string(x, y, z, block_string)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse block string: {}", e)))?;
-        Ok(())
+
+    pub fn get_available_schematic_versions(&self) -> Array {
+        let versions = SchematicVersion::get_all();
+        let js_versions = Array::new();
+        for version in versions {
+            js_versions.push(&JsValue::from_str(&version.to_string()));
+        }
+        js_versions
     }
+
+
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {
+        self.0.set_block_str(x, y, z, block_name);
+    }
+
 
     pub fn copy_region(
         &mut self,

@@ -6,7 +6,7 @@ impl std::fmt::Debug for UniversalSchematic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UniversalSchematic")
             .field("metadata", &self.metadata)
-            .field("regions", &self.regions.keys().collect::<Vec<_>>())
+            .field("regions", &self.get_all_regions().keys().collect::<Vec<_>>())
             .finish()
     }
 }
@@ -16,7 +16,7 @@ pub fn format_schematic(schematic: &UniversalSchematic) -> String {
     output.push_str("Schematic:\n");
     output.push_str(&format_metadata(&schematic.metadata));
     output.push_str("Regions:\n");
-    for (name, region) in &schematic.regions {
+    for (name, region) in &schematic.get_all_regions() {
         output.push_str(&format_region(name, region));
     }
     output

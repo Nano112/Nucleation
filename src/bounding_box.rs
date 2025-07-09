@@ -6,6 +6,13 @@ pub struct BoundingBox {
     pub max: (i32, i32, i32),
 }
 
+impl Default for BoundingBox {
+    fn default() -> Self {
+        // An “empty” box; will be overwritten immediately by rebuild_bbox()
+        BoundingBox { min: (0, 0, 0), max: (0, 0, 0) }
+    }
+}
+
 impl BoundingBox {
     pub fn new(min: (i32, i32, i32), max: (i32, i32, i32)) -> Self {
         BoundingBox { min, max }

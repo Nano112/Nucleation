@@ -75,6 +75,11 @@ impl PySchematic {
         }
     }
 
+    // test method to check if the Python class is working
+    pub fn test(&self) -> String {
+        "Schematic class is working!".to_string()
+    }
+
     pub fn from_data(&mut self, data: &[u8]) -> PyResult<()> {
         if litematic::is_litematic(data) {
             self.inner = litematic::from_litematic(data)
@@ -112,8 +117,22 @@ impl PySchematic {
         Ok(PyBytes::new(py, &bytes).into())
     }
 
-    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {
-        self.inner.set_block(x, y, z, BlockState::new(block_name.to_string()));
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) -> bool {
+        self.inner.set_block_str(x, y, z, block_name)
+    }
+
+    pub fn set_block_in_region(&mut self, region_name: &str, x: i32, y: i32, z: i32, block_name: &str) -> bool {
+        self.inner.set_block_in_region_str(region_name, x, y, z, block_name)
+    }
+
+    /// Expose cache clearing to Python
+    pub fn clear_cache(&mut self) {
+        self.inner.clear_block_state_cache();
+    }
+
+    /// Expose cache stats to Python for debugging
+    pub fn cache_info(&self) -> (usize, usize) {
+        self.inner.cache_stats()
     }
 
     pub fn set_block_from_string(&mut self, x: i32, y: i32, z: i32, block_string: &str) -> PyResult<()> {
@@ -278,7 +297,7 @@ impl PySchematic {
     pub fn debug_info(&self) -> String {
         format!("Schematic name: {}, Regions: {}",
                 self.inner.metadata.name.as_ref().unwrap_or(&"Unnamed".to_string()),
-                self.inner.regions.len()
+                self.inner.other_regions.len() + 1 // +1 for the main region
         )
     }
 

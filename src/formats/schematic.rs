@@ -16,6 +16,42 @@ use wasm_bindgen::JsValue;
 #[cfg(feature = "wasm")]
 use web_sys::console;
 
+// enum for versions of schematics
+#[derive(Debug, Clone, Copy)]
+pub enum SchematicVersion {
+    V2,
+    V3,
+}
+
+impl SchematicVersion {
+    pub fn as_str(&self) -> &str {
+        match self {
+            SchematicVersion::V2 => "v2",
+            SchematicVersion::V3 => "v3",
+        }
+    }
+
+    pub fn from_str(version: &str) -> Option<SchematicVersion> {
+        match version {
+            "v2" => Some(SchematicVersion::V2),
+            "v3" => Some(SchematicVersion::V3),
+            _ => None,
+        }
+    }
+
+    pub fn get_default() -> SchematicVersion {
+        SchematicVersion::V3
+    }
+
+    pub fn get_all() -> Vec<SchematicVersion> {
+        vec![SchematicVersion::V2, SchematicVersion::V3]
+    }
+
+
+}
+
+
+
 
 pub fn is_schematic(data: &[u8]) -> bool {
     // Decompress the data
@@ -58,9 +94,17 @@ pub fn is_schematic(data: &[u8]) -> bool {
     root.get::<_, &Vec<i8>>("BlockData").is_ok()
 }
 
+
 // Default function uses v3 format
 pub fn to_schematic(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    to_schematic_v3(schematic)
+    to_schematic_version(schematic, SchematicVersion::get_default())
+}
+
+pub fn to_schematic_version(schematic: &UniversalSchematic, version: SchematicVersion) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    match version {
+        SchematicVersion::V2 => to_schematic_v2(schematic),
+        SchematicVersion::V3 => to_schematic_v3(schematic),
+    }
 }
 
 // Version 3 format (recommended)
@@ -136,17 +180,12 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
 
     // Add block entities to Blocks container
     let mut block_entities = NbtList::new();
-    for region in schematic.regions.values() {
-        block_entities.extend(convert_block_entities(region).iter().cloned());
-    }
-    blocks_container.insert("BlockEntities", NbtTag::List(block_entities));
-
-    // Add the Blocks container to schematic data
-    schematic_data.insert("Blocks", NbtTag::Compound(blocks_container));
 
     // Entities remain at root level in v3 - with validation
     let mut entities = NbtList::new();
-    for region in schematic.regions.values() {
+    for region in schematic.get_all_regions().values() {
+        block_entities.extend(convert_block_entities(region).iter().cloned());
+
         let region_entities = convert_entities(region);
 
         // Only add valid entities
@@ -162,6 +201,11 @@ pub fn to_schematic_v3(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
             }
         }
     }
+    blocks_container.insert("BlockEntities", NbtTag::List(block_entities));
+
+    // Add the Blocks container to schematic data
+    schematic_data.insert("Blocks", NbtTag::Compound(blocks_container));
+
     schematic_data.insert("Entities", NbtTag::List(entities));
 
     // Add metadata
@@ -208,15 +252,13 @@ pub fn to_schematic_v2(schematic: &UniversalSchematic) -> Result<Vec<u8>, Box<dy
     schematic_data.insert("BlockData", NbtTag::ByteArray(block_data.iter().map(|&x| x as i8).collect()));
 
     let mut block_entities = NbtList::new();
-    for region in schematic.regions.values() {
+    let mut entities = NbtList::new();
+    for region in schematic.get_all_regions().values() {
         block_entities.extend(convert_block_entities(region).iter().cloned());
+        entities.extend(convert_entities(region).iter().cloned());
     }
     schematic_data.insert("BlockEntities", NbtTag::List(block_entities));
 
-    let mut entities = NbtList::new();
-    for region in schematic.regions.values() {
-        entities.extend(convert_entities(region).iter().cloned());
-    }
     schematic_data.insert("Entities", NbtTag::List(entities));
 
     schematic_data.insert("Metadata", schematic.metadata.to_nbt());
@@ -604,10 +646,11 @@ mod tests {
 
         // Compare the original and loaded schematics
         assert_eq!(schematic.metadata.name, loaded_schematic.metadata.name);
-        assert_eq!(schematic.regions.len(), loaded_schematic.regions.len());
+        assert_eq!(schematic.other_regions.len(), loaded_schematic.other_regions.len());
+        assert_eq!(schematic.get_bounding_box(), loaded_schematic.get_bounding_box());
 
-        let original_region = schematic.regions.get("Main").unwrap();
-        let loaded_region = loaded_schematic.regions.get("Main").unwrap();
+        let original_region = schematic.default_region;
+        let loaded_region = loaded_schematic.default_region;
 
         assert_eq!(original_region.entities.len(), loaded_region.entities.len());
         assert_eq!(original_region.block_entities.len(), loaded_region.block_entities.len());

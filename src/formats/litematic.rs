@@ -114,7 +114,7 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
 
     metadata.insert("TotalVolume", NbtTag::Int(schematic.total_volume() as i32));
     metadata.insert("TotalBlocks", NbtTag::Int(schematic.total_blocks() as i32));
-    metadata.insert("RegionCount", NbtTag::Int(schematic.regions.len() as i32));
+    metadata.insert("RegionCount", NbtTag::Int(schematic.other_regions.len() as i32 + 1));
 
     metadata.insert("Software", NbtTag::String("UniversalSchematic".to_string()));
 
@@ -123,7 +123,7 @@ fn create_metadata(schematic: &UniversalSchematic) -> NbtCompound {
 fn create_regions(schematic: &UniversalSchematic) -> NbtCompound {
     let mut regions = NbtCompound::new();
 
-    for (name, region) in &schematic.regions {
+    for (name, region) in &schematic.get_all_regions() {
         let mut region_nbt = NbtCompound::new();
 
         // Position
@@ -440,10 +440,9 @@ mod tests {
         let mut schematic = UniversalSchematic::new("Test Schematic".to_string());
         parse_regions(&root, &mut schematic).unwrap();
 
-        assert_eq!(schematic.regions.len(), 1);
-        assert!(schematic.regions.contains_key("TestRegion"));
+        assert_eq!(schematic.default_region_name, "TestRegion");
 
-        let parsed_region = schematic.regions.get("TestRegion").unwrap();
+        let parsed_region = schematic.default_region;
         assert_eq!(parsed_region.position, (0, 0, 0));
         assert_eq!(parsed_region.size, (2, 2, 2));
         assert_eq!(parsed_region.palette.len(), 2);
@@ -510,10 +509,11 @@ mod tests {
 
         // Compare original and roundtrip schematics
         assert_eq!(original_schematic.metadata.name, roundtrip_schematic.metadata.name);
-        assert_eq!(original_schematic.regions.len(), roundtrip_schematic.regions.len());
+        assert_eq!(original_schematic.other_regions.len(), roundtrip_schematic.other_regions.len());
 
-        let original_region = original_schematic.regions.get("TestRegion").unwrap();
-        let roundtrip_region = roundtrip_schematic.regions.get("TestRegion").unwrap();
+        // Compare the "TestRegion" instead of the default region
+        let original_region = original_schematic.get_region("TestRegion").unwrap();
+        let roundtrip_region = roundtrip_schematic.get_region("TestRegion").unwrap();
 
         assert_eq!(original_region.position, roundtrip_region.position);
         assert_eq!(original_region.size, roundtrip_region.size);

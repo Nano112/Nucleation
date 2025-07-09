@@ -254,7 +254,7 @@ impl SchematicWrapper {
     pub fn debug_info(&self) -> String {
         format!("Schematic name: {}, Regions: {}",
                 self.0.metadata.name.as_ref().unwrap_or(&"Unnamed".to_string()),
-                self.0.regions.len()
+                self.0.other_regions.len() + 1
         )
     }
 

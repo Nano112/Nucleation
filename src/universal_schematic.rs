@@ -23,6 +23,20 @@ pub struct UniversalSchematic {
     block_state_cache: HashMap<String, BlockState>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ChunkIndices {
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub chunk_z: i32,
+    pub blocks: Vec<(BlockPosition, usize)>, // (position, palette_index)
+}
+
+#[derive(Debug, Clone)]
+pub struct AllPalettes {
+    pub default_palette: Vec<BlockState>,
+    pub region_palettes: HashMap<String, Vec<BlockState>>,
+}
+
 pub enum ChunkLoadingStrategy {
     Default,
     DistanceToCamera(f32, f32, f32), // Camera position
@@ -856,6 +870,246 @@ impl UniversalSchematic {
         });
 
         default_iter.chain(other_iter)
+    }
+
+    pub fn iter_blocks_indices(&self) -> impl Iterator<Item = (BlockPosition, usize)> + '_ {
+        // Iterator for default region - returns palette indices directly
+        let default_iter = self.default_region.blocks.iter().enumerate().filter_map(
+            move |(index, &palette_index)| {
+                // Skip air blocks (usually index 0) to reduce data transfer
+                if palette_index == 0 {
+                    return None;
+                }
+                let (x, y, z) = self.default_region.index_to_coords(index);
+                Some((BlockPosition { x, y, z }, palette_index))
+            },
+        );
+
+        // Iterator for other regions
+        let other_iter = self.other_regions.values().flat_map(|region| {
+            region.blocks.iter().enumerate().filter_map(move |(index, &palette_index)| {
+                if palette_index == 0 {
+                    return None;
+                }
+                let (x, y, z) = region.index_to_coords(index);
+                Some((BlockPosition { x, y, z }, palette_index))
+            })
+        });
+
+        default_iter.chain(other_iter)
+    }
+
+    pub fn iter_chunks_indices(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32,
+        strategy: Option<ChunkLoadingStrategy>,
+    ) -> impl Iterator<Item = ChunkIndices> + '_ {
+        let chunks = self.split_into_chunks_indices(chunk_width, chunk_height, chunk_length);
+
+        // Apply sorting based on strategy (same logic as before)
+        let mut ordered_chunks = chunks;
+        if let Some(strategy) = strategy {
+            match strategy {
+                ChunkLoadingStrategy::Default => {
+                    // Default order - no sorting needed
+                }
+                ChunkLoadingStrategy::DistanceToCamera(cam_x, cam_y, cam_z) => {
+                    ordered_chunks.sort_by(|a, b| {
+                        let a_center_x = (a.chunk_x * chunk_width) + (chunk_width / 2);
+                        let a_center_y = (a.chunk_y * chunk_height) + (chunk_height / 2);
+                        let a_center_z = (a.chunk_z * chunk_length) + (chunk_length / 2);
+
+                        let b_center_x = (b.chunk_x * chunk_width) + (chunk_width / 2);
+                        let b_center_y = (b.chunk_y * chunk_height) + (chunk_height / 2);
+                        let b_center_z = (b.chunk_z * chunk_length) + (chunk_length / 2);
+
+                        let a_dist = (a_center_x as f32 - cam_x).powi(2)
+                            + (a_center_y as f32 - cam_y).powi(2)
+                            + (a_center_z as f32 - cam_z).powi(2);
+
+                        let b_dist = (b_center_x as f32 - cam_x).powi(2)
+                            + (b_center_y as f32 - cam_y).powi(2)
+                            + (b_center_z as f32 - cam_z).powi(2);
+
+                        a_dist.partial_cmp(&b_dist).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                }
+                ChunkLoadingStrategy::TopDown => {
+                    ordered_chunks.sort_by(|a, b| b.chunk_y.cmp(&a.chunk_y));
+                }
+                ChunkLoadingStrategy::BottomUp => {
+                    ordered_chunks.sort_by(|a, b| a.chunk_y.cmp(&b.chunk_y));
+                }
+                ChunkLoadingStrategy::CenterOutward => {
+                    let (width, height, depth) = self.get_dimensions();
+                    let center_x = (width / 2) / chunk_width;
+                    let center_y = (height / 2) / chunk_height;
+                    let center_z = (depth / 2) / chunk_length;
+
+                    ordered_chunks.sort_by(|a, b| {
+                        let a_dist = (a.chunk_x - center_x).pow(2)
+                            + (a.chunk_y - center_y).pow(2)
+                            + (a.chunk_z - center_z).pow(2);
+
+                        let b_dist = (b.chunk_x - center_x).pow(2)
+                            + (b.chunk_y - center_y).pow(2)
+                            + (b.chunk_z - center_z).pow(2);
+
+                        a_dist.cmp(&b_dist)
+                    });
+                }
+                ChunkLoadingStrategy::Random => {
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+
+                    let mut hasher = DefaultHasher::new();
+                    if let Some(name) = &self.metadata.name {
+                        name.hash(&mut hasher);
+                    } else {
+                        "Default".hash(&mut hasher);
+                    }
+                    let seed = hasher.finish();
+
+                    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                    use rand::seq::SliceRandom;
+                    ordered_chunks.shuffle(&mut rng);
+                }
+            }
+        }
+
+        ordered_chunks.into_iter()
+    }
+
+    fn split_into_chunks_indices(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32,
+    ) -> Vec<ChunkIndices> {
+        use std::collections::HashMap;
+        let mut chunk_map: HashMap<(i32, i32, i32), Vec<(BlockPosition, usize)>> = HashMap::new();
+        let bbox = self.get_bounding_box();
+
+        // Helper function to get chunk coordinate
+        let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
+            let offset = if pos < 0 { chunk_size - 1 } else { 0 };
+            (pos - offset) / chunk_size
+        };
+
+        // Process default region
+        for (index, &palette_index) in self.default_region.blocks.iter().enumerate() {
+            if palette_index == 0 {
+                continue; // Skip air blocks
+            }
+
+            let (x, y, z) = self.default_region.index_to_coords(index);
+            let chunk_x = get_chunk_coord(x, chunk_width);
+            let chunk_y = get_chunk_coord(y, chunk_height);
+            let chunk_z = get_chunk_coord(z, chunk_length);
+            let chunk_key = (chunk_x, chunk_y, chunk_z);
+
+            chunk_map
+                .entry(chunk_key)
+                .or_insert_with(Vec::new)
+                .push((BlockPosition { x, y, z }, palette_index));
+        }
+
+        // Process other regions
+        for region in self.other_regions.values() {
+            for (index, &palette_index) in region.blocks.iter().enumerate() {
+                if palette_index == 0 {
+                    continue; // Skip air blocks
+                }
+
+                let (x, y, z) = region.index_to_coords(index);
+                let chunk_x = get_chunk_coord(x, chunk_width);
+                let chunk_y = get_chunk_coord(y, chunk_height);
+                let chunk_z = get_chunk_coord(z, chunk_length);
+                let chunk_key = (chunk_x, chunk_y, chunk_z);
+
+                chunk_map
+                    .entry(chunk_key)
+                    .or_insert_with(Vec::new)
+                    .push((BlockPosition { x, y, z }, palette_index));
+            }
+        }
+
+        chunk_map
+            .into_iter()
+            .map(|((chunk_x, chunk_y, chunk_z), blocks)| ChunkIndices {
+                chunk_x,
+                chunk_y,
+                chunk_z,
+                blocks,
+            })
+            .collect()
+    }
+    pub fn get_all_palettes(&self) -> AllPalettes {
+        let mut all_palettes = AllPalettes {
+            default_palette: self.default_region.palette.clone(),
+            region_palettes: HashMap::new(),
+        };
+
+        for (region_name, region) in &self.other_regions {
+            all_palettes.region_palettes.insert(region_name.clone(), region.palette.clone());
+        }
+
+        all_palettes
+    }
+
+    pub fn get_chunk_blocks_indices(&self,
+                                    offset_x: i32,
+                                    offset_y: i32,
+                                    offset_z: i32,
+                                    width: i32,
+                                    height: i32,
+                                    length: i32
+    ) -> Vec<(BlockPosition, usize)> {
+        let mut blocks = Vec::new();
+
+        // Check default region
+        if self.default_region.get_bounding_box().intersects_range(
+            offset_x, offset_y, offset_z,
+            offset_x + width, offset_y + height, offset_z + length
+        ) {
+            for (index, &palette_index) in self.default_region.blocks.iter().enumerate() {
+                if palette_index == 0 {
+                    continue; // Skip air
+                }
+
+                let (x, y, z) = self.default_region.index_to_coords(index);
+                if x >= offset_x && x < offset_x + width &&
+                    y >= offset_y && y < offset_y + height &&
+                    z >= offset_z && z < offset_z + length {
+                    blocks.push((BlockPosition { x, y, z }, palette_index));
+                }
+            }
+        }
+
+        // Check other regions
+        for region in self.other_regions.values() {
+            if region.get_bounding_box().intersects_range(
+                offset_x, offset_y, offset_z,
+                offset_x + width, offset_y + height, offset_z + length
+            ) {
+                for (index, &palette_index) in region.blocks.iter().enumerate() {
+                    if palette_index == 0 {
+                        continue; // Skip air
+                    }
+
+                    let (x, y, z) = region.index_to_coords(index);
+                    if x >= offset_x && x < offset_x + width &&
+                        y >= offset_y && y < offset_y + height &&
+                        z >= offset_z && z < offset_z + length {
+                        blocks.push((BlockPosition { x, y, z }, palette_index));
+                    }
+                }
+            }
+        }
+
+        blocks
     }
 
     pub fn iter_chunks(

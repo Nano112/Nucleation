@@ -30,6 +30,12 @@ impl BoundingBox {
             self.min.2 <= other.max.2 && self.max.2 >= other.min.2
     }
 
+    pub fn intersects_range(&self, min_x: i32, min_y: i32, min_z: i32, max_x: i32, max_y: i32, max_z: i32) -> bool {
+        !(self.max.0 < min_x || self.min.0 >= max_x ||
+            self.max.1 < min_y || self.min.1 >= max_y ||
+            self.max.2 < min_z || self.min.2 >= max_z)
+    }
+
     pub fn union(&self, other: &BoundingBox) -> BoundingBox {
         BoundingBox {
             min: (

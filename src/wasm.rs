@@ -15,6 +15,20 @@ use crate::bounding_box::BoundingBox;
 use crate::schematic::SchematicVersion;
 use crate::universal_schematic::ChunkLoadingStrategy;
 
+#[wasm_bindgen]
+pub struct LazyChunkIterator {
+    // Iterator state - doesn't store all chunks, just iteration parameters
+    schematic_wrapper: SchematicWrapper,
+    chunk_width: i32,
+    chunk_height: i32,
+    chunk_length: i32,
+
+    // Current iteration state
+    current_chunk_coords: Vec<(i32, i32, i32)>, // Just the coordinates, not the data
+    current_index: usize,
+}
+
+
 #[wasm_bindgen(start)]
 pub fn start() {
     console::log_1(&"Initializing schematic utilities".into());
@@ -36,7 +50,7 @@ impl SchematicWrapper {
     pub fn new() -> Self {
         SchematicWrapper(UniversalSchematic::new("Default".to_string()))
     }
-    
+
 
 
     pub fn from_data(&mut self, data: &[u8]) -> Result<(), JsValue> {
@@ -466,7 +480,7 @@ impl SchematicWrapper {
             .collect::<Array>()
     }
 
-    
+
     pub fn get_chunk_blocks(&self, offset_x: i32, offset_y: i32, offset_z: i32, width: i32, height: i32, length: i32) -> js_sys::Array {
         let blocks = self.0.iter_blocks()
             .filter(|(pos, _)| {
@@ -493,8 +507,319 @@ impl SchematicWrapper {
     }
 
 
+    /// Get all palettes once - eliminates repeated string transfers
+    /// Returns: { default: [BlockState], regions: { regionName: [BlockState] } }
+    pub fn get_all_palettes(&self) -> JsValue {
+        let all_palettes = self.0.get_all_palettes();
+
+        let js_object = Object::new();
+
+        // Convert default palette
+        let default_palette = Array::new();
+        for block_state in &all_palettes.default_palette {
+            let block_obj = Object::new();
+            Reflect::set(&block_obj, &"name".into(), &JsValue::from_str(&block_state.name)).unwrap();
+
+            let properties = Object::new();
+            for (key, value) in &block_state.properties {
+                Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+            }
+            Reflect::set(&block_obj, &"properties".into(), &properties).unwrap();
+            default_palette.push(&block_obj);
+        }
+        Reflect::set(&js_object, &"default".into(), &default_palette).unwrap();
+
+        // Convert region palettes
+        let regions_obj = Object::new();
+        for (region_name, palette) in &all_palettes.region_palettes {
+            let region_palette = Array::new();
+            for block_state in palette {
+                let block_obj = Object::new();
+                Reflect::set(&block_obj, &"name".into(), &JsValue::from_str(&block_state.name)).unwrap();
+
+                let properties = Object::new();
+                for (key, value) in &block_state.properties {
+                    Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                }
+                Reflect::set(&block_obj, &"properties".into(), &properties).unwrap();
+                region_palette.push(&block_obj);
+            }
+            Reflect::set(&regions_obj, &JsValue::from_str(region_name), &region_palette).unwrap();
+        }
+        Reflect::set(&js_object, &"regions".into(), &regions_obj).unwrap();
+
+        js_object.into()
+    }
+
+    /// Optimized chunks iterator that returns palette indices instead of full block data
+    /// Returns array of: { chunk_x, chunk_y, chunk_z, blocks: [[x,y,z,palette_index],...] }
+    pub fn chunks_indices(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32
+    ) -> Array {
+        self.0.iter_chunks_indices(chunk_width, chunk_height, chunk_length, Some(ChunkLoadingStrategy::BottomUp))
+            .map(|chunk| {
+                let chunk_obj = Object::new();
+                Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();
+                Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk.chunk_y.into()).unwrap();
+                Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk.chunk_z.into()).unwrap();
+
+                // Pack blocks as array of [x, y, z, palette_index] for minimal data transfer
+                let blocks_array = Array::new();
+                for (pos, palette_index) in chunk.blocks {
+                    let block_data = Array::new();
+                    block_data.push(&pos.x.into());
+                    block_data.push(&pos.y.into());
+                    block_data.push(&pos.z.into());
+                    block_data.push(&(palette_index as u32).into());
+                    blocks_array.push(&block_data);
+                }
+
+                Reflect::set(&chunk_obj, &"blocks".into(), &blocks_array).unwrap();
+                chunk_obj
+            })
+            .collect::<Array>()
+    }
+
+    /// Optimized chunks with strategy - returns palette indices
+    pub fn chunks_indices_with_strategy(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32,
+        strategy: &str,
+        camera_x: f32,
+        camera_y: f32,
+        camera_z: f32
+    ) -> Array {
+        let strategy_enum = match strategy {
+            "distance_to_camera" => Some(ChunkLoadingStrategy::DistanceToCamera(camera_x, camera_y, camera_z)),
+            "top_down" => Some(ChunkLoadingStrategy::TopDown),
+            "bottom_up" => Some(ChunkLoadingStrategy::BottomUp),
+            "center_outward" => Some(ChunkLoadingStrategy::CenterOutward),
+            "random" => Some(ChunkLoadingStrategy::Random),
+            _ => None
+        };
+
+        self.0.iter_chunks_indices(chunk_width, chunk_height, chunk_length, strategy_enum)
+            .map(|chunk| {
+                let chunk_obj = Object::new();
+                Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk.chunk_x.into()).unwrap();
+                Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk.chunk_y.into()).unwrap();
+                Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk.chunk_z.into()).unwrap();
+
+                let blocks_array = Array::new();
+                for (pos, palette_index) in chunk.blocks {
+                    let block_data = Array::new();
+                    block_data.push(&pos.x.into());
+                    block_data.push(&pos.y.into());
+                    block_data.push(&pos.z.into());
+                    block_data.push(&(palette_index as u32).into());
+                    blocks_array.push(&block_data);
+                }
+
+                Reflect::set(&chunk_obj, &"blocks".into(), &blocks_array).unwrap();
+                chunk_obj
+            })
+            .collect::<Array>()
+    }
+
+    /// Get specific chunk blocks as palette indices (for lazy loading individual chunks)
+    /// Returns array of [x, y, z, palette_index]
+    pub fn get_chunk_blocks_indices(
+        &self,
+        offset_x: i32,
+        offset_y: i32,
+        offset_z: i32,
+        width: i32,
+        height: i32,
+        length: i32
+    ) -> Array {
+        let blocks = self.0.get_chunk_blocks_indices(offset_x, offset_y, offset_z, width, height, length);
+
+        let blocks_array = Array::new();
+        for (pos, palette_index) in blocks {
+            let block_data = Array::new();
+            block_data.push(&pos.x.into());
+            block_data.push(&pos.y.into());
+            block_data.push(&pos.z.into());
+            block_data.push(&(palette_index as u32).into());
+            blocks_array.push(&block_data);
+        }
+
+        blocks_array
+    }
+
+    /// All blocks as palette indices - for when you need everything at once but efficiently
+    /// Returns array of [x, y, z, palette_index]
+    pub fn blocks_indices(&self) -> Array {
+        self.0.iter_blocks_indices()
+            .map(|(pos, palette_index)| {
+                let block_data = Array::new();
+                block_data.push(&pos.x.into());
+                block_data.push(&pos.y.into());
+                block_data.push(&pos.z.into());
+                block_data.push(&(palette_index as u32).into());
+                block_data
+            })
+            .collect::<Array>()
+    }
+
+
+
+    /// Get optimization stats
+    pub fn get_optimization_info(&self) -> JsValue {
+        let default_region = &self.0.default_region;
+        let total_blocks = default_region.blocks.len();
+        let non_air_blocks = default_region.blocks.iter().filter(|&&idx| idx != 0).count();
+        let palette_size = default_region.palette.len();
+
+        let info_obj = Object::new();
+        Reflect::set(&info_obj, &"total_blocks".into(), &(total_blocks as u32).into()).unwrap();
+        Reflect::set(&info_obj, &"non_air_blocks".into(), &(non_air_blocks as u32).into()).unwrap();
+        Reflect::set(&info_obj, &"palette_size".into(), &(palette_size as u32).into()).unwrap();
+        Reflect::set(&info_obj, &"compression_ratio".into(), &((total_blocks as f64) / (palette_size as f64)).into()).unwrap();
+
+        info_obj.into()
+    }
+
+    pub fn create_lazy_chunk_iterator(
+        &self,
+        chunk_width: i32,
+        chunk_height: i32,
+        chunk_length: i32,
+        strategy: &str,
+        camera_x: f32,
+        camera_y: f32,
+        camera_z: f32
+    ) -> LazyChunkIterator {
+        let mut chunk_coords = self.calculate_chunk_coordinates(chunk_width, chunk_height, chunk_length);
+
+        // Sort coordinates by strategy
+        match strategy {
+            "distance_to_camera" => {
+                chunk_coords.sort_by(|a, b| {
+                    let a_center_x = (a.0 * chunk_width) as f32 + (chunk_width as f32 / 2.0);
+                    let a_center_y = (a.1 * chunk_height) as f32 + (chunk_height as f32 / 2.0);
+                    let a_center_z = (a.2 * chunk_length) as f32 + (chunk_length as f32 / 2.0);
+
+                    let b_center_x = (b.0 * chunk_width) as f32 + (chunk_width as f32 / 2.0);
+                    let b_center_y = (b.1 * chunk_height) as f32 + (chunk_height as f32 / 2.0);
+                    let b_center_z = (b.2 * chunk_length) as f32 + (chunk_length as f32 / 2.0);
+
+                    let a_dist = (a_center_x - camera_x).powi(2) + (a_center_y - camera_y).powi(2) + (a_center_z - camera_z).powi(2);
+                    let b_dist = (b_center_x - camera_x).powi(2) + (b_center_y - camera_y).powi(2) + (b_center_z - camera_z).powi(2);
+
+                    a_dist.partial_cmp(&b_dist).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            "bottom_up" => {
+                chunk_coords.sort_by(|a, b| a.1.cmp(&b.1));
+            }
+            _ => {} // Default order
+        }
+
+        LazyChunkIterator {
+            schematic_wrapper: self.clone(),
+            chunk_width,
+            chunk_height,
+            chunk_length,
+            current_chunk_coords: chunk_coords,
+            current_index: 0,
+        }
+    }
+
+    fn calculate_chunk_coordinates(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<(i32, i32, i32)> {
+        use std::collections::HashSet;
+        let mut chunk_coords = HashSet::new();
+        let bbox = self.0.get_bounding_box();
+
+        let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
+            let offset = if pos < 0 { chunk_size - 1 } else { 0 };
+            (pos - offset) / chunk_size
+        };
+
+        for x in bbox.min.0..=bbox.max.0 {
+            for y in bbox.min.1..=bbox.max.1 {
+                for z in bbox.min.2..=bbox.max.2 {
+                    if self.0.get_block(x, y, z).is_some() {
+                        let chunk_x = get_chunk_coord(x, chunk_width);
+                        let chunk_y = get_chunk_coord(y, chunk_height);
+                        let chunk_z = get_chunk_coord(z, chunk_length);
+                        chunk_coords.insert((chunk_x, chunk_y, chunk_z));
+                    }
+                }
+            }
+        }
+
+        chunk_coords.into_iter().collect()
+    }
+
 }
 
+impl Clone for SchematicWrapper {
+    fn clone(&self) -> Self {
+        SchematicWrapper(self.0.clone())
+    }
+}
+#[wasm_bindgen]
+impl LazyChunkIterator {
+    /// Get the next chunk on-demand (generates it fresh, doesn't store it)
+    pub fn next(&mut self) -> JsValue {
+        if self.current_index >= self.current_chunk_coords.len() {
+            return JsValue::NULL;
+        }
+
+        let (chunk_x, chunk_y, chunk_z) = self.current_chunk_coords[self.current_index];
+        self.current_index += 1;
+
+        // Calculate chunk bounds
+        let min_x = chunk_x * self.chunk_width;
+        let min_y = chunk_y * self.chunk_height;
+        let min_z = chunk_z * self.chunk_length;
+
+        // Generate this chunk's data on-demand (only in memory temporarily)
+        let blocks = self.schematic_wrapper.get_chunk_blocks_indices(
+            min_x, min_y, min_z,
+            self.chunk_width, self.chunk_height, self.chunk_length
+        );
+
+        // Create result object
+        let chunk_obj = Object::new();
+        Reflect::set(&chunk_obj, &"chunk_x".into(), &chunk_x.into()).unwrap();
+        Reflect::set(&chunk_obj, &"chunk_y".into(), &chunk_y.into()).unwrap();
+        Reflect::set(&chunk_obj, &"chunk_z".into(), &chunk_z.into()).unwrap();
+        Reflect::set(&chunk_obj, &"index".into(), &(self.current_index - 1).into()).unwrap();
+        Reflect::set(&chunk_obj, &"total".into(), &self.current_chunk_coords.len().into()).unwrap();
+
+        // Blocks are already in the right format: [[x,y,z,palette_index], ...]
+        Reflect::set(&chunk_obj, &"blocks".into(), &blocks).unwrap();
+
+        chunk_obj.into()
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.current_index < self.current_chunk_coords.len()
+    }
+
+    pub fn total_chunks(&self) -> u32 {
+        self.current_chunk_coords.len() as u32
+    }
+
+    pub fn current_position(&self) -> u32 {
+        self.current_index as u32
+    }
+
+    pub fn reset(&mut self) {
+        self.current_index = 0;
+    }
+
+    pub fn skip_to(&mut self, index: u32) {
+        self.current_index = (index as usize).min(self.current_chunk_coords.len());
+    }
+}
 
 
 #[wasm_bindgen]

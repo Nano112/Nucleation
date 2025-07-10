@@ -137,6 +137,46 @@ impl SchematicWrapper {
         js_palette.into()
     }
 
+    pub fn get_bounding_box(&self) -> JsValue {
+        let bbox = self.0.get_bounding_box();
+        let obj = Object::new();
+        Reflect::set(&obj, &"min".into(), &Array::of3(
+            &JsValue::from(bbox.min.0),
+            &JsValue::from(bbox.min.1),
+            &JsValue::from(bbox.min.2)
+        )).unwrap();
+        Reflect::set(&obj, &"max".into(), &Array::of3(
+            &JsValue::from(bbox.max.0),
+            &JsValue::from(bbox.max.1),
+            &JsValue::from(bbox.max.2)
+        )).unwrap();
+        obj.into()
+    }
+
+    pub fn get_region_bounding_box(&self, region_name: &str) -> JsValue {
+        let bbox = if region_name == "default" || region_name == "Default" {
+            self.0.default_region.get_bounding_box()
+        } else {
+            match self.0.other_regions.get(region_name) {
+                Some(region) => region.get_bounding_box(),
+                None => return JsValue::NULL, // Region not found
+            }
+        };
+
+        let obj = Object::new();
+        Reflect::set(&obj, &"min".into(), &Array::of3(
+            &JsValue::from(bbox.min.0),
+            &JsValue::from(bbox.min.1),
+            &JsValue::from(bbox.min.2)
+        )).unwrap();
+        Reflect::set(&obj, &"max".into(), &Array::of3(
+            &JsValue::from(bbox.max.0),
+            &JsValue::from(bbox.max.1),
+            &JsValue::from(bbox.max.2)
+        )).unwrap();
+        obj.into()
+    }
+
 
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {

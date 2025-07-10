@@ -107,6 +107,22 @@ impl UniversalSchematic {
         }
     }
 
+    pub fn get_palette_from_region(&self, region_name: &str) -> Option<Vec<BlockState>> {
+        if region_name == self.default_region_name {
+            Some(self.default_region.get_palette())
+        } else {
+            self.other_regions
+                .get(region_name)
+                .map(|region| region.get_palette())
+        }
+    }
+
+    pub fn get_palette(&self) -> Option<Vec<BlockState>> {
+        let default_region_name = self.default_region_name.clone();
+        let mut palette = self.get_palette_from_region(&default_region_name);
+        palette
+    }
+
     pub fn set_block_in_region_str(
         &mut self,
         region_name: &str,

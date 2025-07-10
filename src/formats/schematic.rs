@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{BufReader, Cursor, Read};
 
 use flate2::Compression;
@@ -22,6 +23,7 @@ pub enum SchematicVersion {
     V2,
     V3,
 }
+
 
 impl SchematicVersion {
     pub fn as_str(&self) -> &str {
@@ -48,6 +50,11 @@ impl SchematicVersion {
     }
 
 
+}
+impl fmt::Display for SchematicVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 

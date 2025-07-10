@@ -74,9 +74,11 @@ impl SchematicWrapper {
     }
 
     pub fn to_schematic_version(&self, version: &str) -> Result<Vec<u8>, JsValue> {
-        schematic::to_schematic_version(&self.0, SchematicVersion::from_str(version)
-            .map_err(|e| JsValue::from_str(&format!("Invalid schematic version: {}", e)))?)
-            .map_err(|e| JsValue::from_str(&format!("Schematic conversion error: {}", e)))
+       let version =  schematic::to_schematic_version(&self.0, SchematicVersion::from_str(version).unwrap());
+        match version {
+            Ok(data) => Ok(data),
+            Err(e) => Err(JsValue::from_str(&format!("Schematic version conversion error: {}", e)))
+        }
     }
 
 
@@ -88,6 +90,53 @@ impl SchematicWrapper {
         }
         js_versions
     }
+
+    pub fn get_palette(&self) -> JsValue {
+        let merged_region = self.0.get_merged_region();
+        let palette = &merged_region.palette;
+
+        let js_palette = Array::new();
+        for block_state in palette {
+            let obj = Object::new();
+            Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block_state.name)).unwrap();
+
+            let properties = Object::new();
+            for (key, value) in &block_state.properties {
+                Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+            }
+            Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+
+            js_palette.push(&obj);
+        }
+        js_palette.into()
+    }
+
+    pub fn get_palette_from_region(&self, region_name: &str) -> JsValue {
+        let palette = if region_name == "default" || region_name == "Default" {
+            &self.0.default_region.palette
+        } else {
+            match self.0.other_regions.get(region_name) {
+                Some(region) => &region.palette,
+                None => return JsValue::NULL, // Region not found
+            }
+        };
+
+        let js_palette = Array::new();
+        for block_state in palette {
+            let obj = Object::new();
+            Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block_state.name)).unwrap();
+
+            let properties = Object::new();
+            for (key, value) in &block_state.properties {
+                Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+            }
+            Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+
+            js_palette.push(&obj);
+        }
+        js_palette.into()
+    }
+
 
 
     pub fn set_block(&mut self, x: i32, y: i32, z: i32, block_name: &str) {

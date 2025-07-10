@@ -771,7 +771,7 @@ pub extern "C" fn schematic_debug_info(schematic: *const SchematicWrapper) -> *m
     let s = unsafe { &*(*schematic).0 };
     let info = format!("Schematic name: {}, Regions: {}",
                        s.metadata.name.as_ref().unwrap_or(&"Unnamed".to_string()),
-                       s.regions.len());
+                       s.other_regions.len() + 1); // +1 for the main region
     CString::new(info).unwrap().into_raw()
 }
 
@@ -793,7 +793,7 @@ pub extern "C" fn debug_schematic(schematic: *const SchematicWrapper) -> *mut c_
     let s = unsafe { &*(*schematic).0 };
     let debug_info = format!("Schematic name: {}, Regions: {}",
                              s.metadata.name.as_ref().unwrap_or(&"Unnamed".to_string()),
-                             s.regions.len());
+                             s.other_regions.len() + 1); // +1 for the main region
     let info = format!("{}\n{}", debug_info, format_schematic(s));
     CString::new(info).unwrap().into_raw()
 }
@@ -806,7 +806,7 @@ pub extern "C" fn debug_json_schematic(schematic: *const SchematicWrapper) -> *m
     let s = unsafe { &*(*schematic).0 };
     let debug_info = format!("Schematic name: {}, Regions: {}",
                              s.metadata.name.as_ref().unwrap_or(&"Unnamed".to_string()),
-                             s.regions.len());
+                             s.other_regions.len() + 1); // +1 for the main region
     let info = format!("{}\n{}", debug_info, format_json_schematic(s));
     CString::new(info).unwrap().into_raw()
 }

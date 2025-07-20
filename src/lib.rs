@@ -17,7 +17,7 @@ mod chunk;
 
 // Feature-specific modules
 #[cfg(feature = "wasm")]
-mod wasm;
+pub mod wasm;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 #[cfg(feature = "python")]

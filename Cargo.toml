@@ -1,6 +1,6 @@
 [package]
 name = "nucleation"
-version = "0.1.71"
+version = "0.1.72"
 edition = "2021"
 description = "A high-performance Minecraft schematic parser and utility library"
 authors = ["Nano nano@schem.at"]
@@ -58,8 +58,10 @@ bytemuck = "1.23.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
-criterion = "0.5.1"
 num-complex = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion = "0.5.1"
 
 [[bench]]
 name = "performance_test"

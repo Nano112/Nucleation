@@ -1,0 +1,17 @@
+{
+  "name": "nucleation-tests",
+  "version": "1.0.0",
+  "description": "Node.js tests for Nucleation WASM chunk iterator functionality",
+  "main": "node_wasm_test.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node node_wasm_test.js",
+    "test:wasm": "node node_wasm_test.js",
+    "build-and-test": "cd .. && ./build-wasm.sh && cd tests && npm test"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -758,7 +758,8 @@ impl SchematicWrapper {
             (pos - offset) / chunk_size
         };
 
-        for (pos, _block) in self.0.iter_blocks() {
+        // Use iter_blocks_indices to skip air blocks, maintaining consistency with chunk methods
+        for (pos, _palette_index) in self.0.iter_blocks_indices() {
             let chunk_x = get_chunk_coord(pos.x, chunk_width);
             let chunk_y = get_chunk_coord(pos.y, chunk_height);
             let chunk_z = get_chunk_coord(pos.z, chunk_length);

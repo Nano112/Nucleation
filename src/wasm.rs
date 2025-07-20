@@ -143,7 +143,6 @@ impl SchematicWrapper {
         js_palette.into()
     }
 
-
     pub fn get_palette_from_region(&self, region_name: &str) -> JsValue {
         let palette = if region_name == "default" || region_name == "Default" {
             &self.0.default_region.palette

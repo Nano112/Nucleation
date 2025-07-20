@@ -125,6 +125,25 @@ impl SchematicWrapper {
         js_palette.into()
     }
 
+    pub fn get_default_region_palette(&self) -> JsValue {
+        let palette = self.0.get_default_region_palette();
+        let js_palette = Array::new();
+        for block_state in palette {
+            let obj = Object::new();
+            Reflect::set(&obj, &"name".into(), &JsValue::from_str(&block_state.name)).unwrap();
+
+            let properties = Object::new();
+            for (key, value) in &block_state.properties {
+                Reflect::set(&properties, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+            }
+            Reflect::set(&obj, &"properties".into(), &properties).unwrap();
+
+            js_palette.push(&obj);
+        }
+        js_palette.into()
+    }
+
+
     pub fn get_palette_from_region(&self, region_name: &str) -> JsValue {
         let palette = if region_name == "default" || region_name == "Default" {
             &self.0.default_region.palette
@@ -734,29 +753,21 @@ impl SchematicWrapper {
     fn calculate_chunk_coordinates(&self, chunk_width: i32, chunk_height: i32, chunk_length: i32) -> Vec<(i32, i32, i32)> {
         use std::collections::HashSet;
         let mut chunk_coords = HashSet::new();
-        let bbox = self.0.get_bounding_box();
 
         let get_chunk_coord = |pos: i32, chunk_size: i32| -> i32 {
             let offset = if pos < 0 { chunk_size - 1 } else { 0 };
             (pos - offset) / chunk_size
         };
 
-        for x in bbox.min.0..=bbox.max.0 {
-            for y in bbox.min.1..=bbox.max.1 {
-                for z in bbox.min.2..=bbox.max.2 {
-                    if self.0.get_block(x, y, z).is_some() {
-                        let chunk_x = get_chunk_coord(x, chunk_width);
-                        let chunk_y = get_chunk_coord(y, chunk_height);
-                        let chunk_z = get_chunk_coord(z, chunk_length);
-                        chunk_coords.insert((chunk_x, chunk_y, chunk_z));
-                    }
-                }
-            }
+        for (pos, _block) in self.0.iter_blocks() {
+            let chunk_x = get_chunk_coord(pos.x, chunk_width);
+            let chunk_y = get_chunk_coord(pos.y, chunk_height);
+            let chunk_z = get_chunk_coord(pos.z, chunk_length);
+            chunk_coords.insert((chunk_x, chunk_y, chunk_z));
         }
 
         chunk_coords.into_iter().collect()
     }
-
 }
 
 impl Clone for SchematicWrapper {
